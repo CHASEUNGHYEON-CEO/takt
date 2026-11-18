@@ -2,6 +2,9 @@
 // Discrete-time (1 s) flow line: stations in series, finite buffers, blocking-after-service,
 // operation-dependent failures, robot micro-stops, changeovers, defects + inspection.
 
+// Bump when simulation logic changes; reproducibility packages record it.
+export const ENGINE_VERSION = '2026.11.18-v4';
+
 export const KINDS = {
   manual:  { label: '수작업', setupMin: 5,  serverCapex: 30e6, kwRun: 0.3, kwIdle: 0.1 },
   machine: { label: '설비',   setupMin: 10, serverCapex: 250e6, kwRun: 15, kwIdle: 4 },
@@ -244,6 +247,7 @@ export function capex(cfg, caseDef) {
     c += Math.max(0, s.n - base.n) * (s.serverCapex ?? k.serverCapex);
     const a = s.auto && cfg.auto[s.auto];
     if (a && a.kind === s.kind) c += s.n * a.capex * (a.robot ? cfg.risk.capexMult : 1);
+    c += +s.extraCapex || 0; // operational alternatives (buffer racks, work-standard revision, …)
   });
   if (cfg.iot) c += E.iotBase + cfg.stations.filter(s => s.mtbf).reduce((a, s) => a + s.n, 0) * E.iotPerMachine;
   return c;

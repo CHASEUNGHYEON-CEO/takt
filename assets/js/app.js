@@ -93,6 +93,7 @@ function describe(lv, C = S.C) {
     if (s.auto) p.push(`${b.name} ${E.AUTOMATION[s.auto].label}${s.n > 1 ? ` ×${s.n}` : ''}`);
     if (s.n !== b.n) p.push(`${b.name} ${b.n}→${s.n}대`);
     if (s.buf !== b.buf) p.push(`${b.name} 버퍼 ${b.buf}→${s.buf}`);
+    if (s.cycle != null && Math.abs(s.cycle - b.cycle) > 0.05) p.push(`${b.name} 작업 ${b.cycle}→${(+s.cycle).toFixed(1)}s`);
   });
   if (lv.iot) p.push('IoT 예지보전');
   return p.length ? p.join(' · ') : '표준 (변경 없음)';
@@ -126,7 +127,7 @@ $('#runCancel').onclick = () => { cancelAll(); toast('실행을 취소했습니�
 /* ============================== shell ============================== */
 const NAV = [
   ['cases', 'folder', '케이스'], ['free', 'sheet', '자유 시뮬레이션'], ['line', 'line', '라인 모델'], ['cond', 'sliders', '시뮬레이션 조건'],
-  ['robot', 'bot', '로봇 영향 분석'], ['ops', 'gauge', 'OEE·라인 지표'], ['exp', 'flask', '실험'], ['report', 'report', '시나리오·보고서'], ['valid', 'badge', '모델 검증'],
+  ['robot', 'bot', '로봇 영향 분석'], ['decide', 'swap', '대안·반전 조건'], ['ops', 'gauge', 'OEE·라인 지표'], ['exp', 'flask', '실험'], ['report', 'report', '시나리오·보고서'], ['valid', 'badge', '모델 검증'],
 ];
 const NO_CASE_OK = ['cases', 'free', 'valid'];
 function renderNav() {
@@ -149,7 +150,7 @@ function setView(v) {
   S.view = v; location.hash = v;
   $$('.view').forEach(el => el.classList.toggle('on', el.id === 'v-' + v));
   renderNav();
-  ({ cases: renderCases, editor: renderEditor, line: renderLine, robot: renderRobot, exp: renderExp, report: renderReport, free: renderFree, cond: renderCond, ops: renderOps, valid: renderValid })[v]?.();
+  ({ cases: renderCases, editor: renderEditor, line: renderLine, robot: renderRobot, exp: renderExp, report: renderReport, free: renderFree, cond: renderCond, ops: renderOps, valid: renderValid, decide: renderDecide })[v]?.();
   $('#main').scrollTop = 0;
 }
 function applyTheme(t) {
@@ -960,6 +961,7 @@ function renderReport() {
           <td style="width:1%"><div class="actions" style="flex-wrap:nowrap"><button class="btn sm" data-ld="${j}">설계로 불러오기</button><button class="btn sm ghost" data-del="${j}">${ic('trash')}</button></div></td></tr>`).join('')}
       </tbody></table></div>` : '<div class="panel-b tx3">라인 모델 인스펙터 하단에서 현재 설계를 시나리오로 저장할 수 있습니다.</div>'}</div>
 
+    <div style="margin-top:var(--gap)">${reproPanel()}</div>
     <article class="panel" style="margin-top:var(--gap)"><div class="panel-b" style="padding:28px 32px;max-width:960px">
       <div class="label">Takt 컨설팅 브리프 ·${new Date().toISOString().slice(0, 10)}</div>
       <h2 style="font-size:24px;margin:6px 0 2px;letter-spacing:-.01em">${esc(C.company)} ${esc(C.title)}</h2>
@@ -972,12 +974,18 @@ function renderReport() {
       ${mcRows.length ? `<table class="t"><thead><tr><th>시나리오</th><th>투자비</th><th>양품</th><th>목표 달성</th><th>불량 유출</th><th>연간 효과</th></tr></thead><tbody>
         ${mcRows.map(({ p, r }) => { const g = (r.pnl.profit - S.mc.res.base.pnl.profit) * spY(); return `<tr class="${p.key === 'base' ? 'base' : ''}"><td class="txt">${esc(p.name)}</td><td>${fmt.won(r.capex)}</td><td>${fmt.n(r.good.mean, 1)}</td><td>${fmt.pct(r.serviceLevel)}</td><td>${fmt.n(r.escaped.mean, 2)}</td><td>${p.key === 'base' ? '기준' : fmt.sgn(g, fmt.won)}</td></tr>`; }).join('')}</tbody></table>`
         : '<p class="tx3" style="margin:0">실험 › Monte Carlo 비교를 실행하면 표가 채워집니다.</p>'}
+      ${(() => { const D = S.decide && S.decide.caseId === C.id ? S.decide : null; if (!D) return ''; const sc = scoreAlts(C, D.res, D.alts, S.target), fl = D.flip, an = D.alts.find(a => a.key === D.sel)?.name;
+        const top = fl ? fl.factors.filter(f => f.margin != null).sort((a, b) => Math.abs(a.margin) - Math.abs(b.margin)).slice(0, 3) : [];
+        return `<h3 style="margin:20px 0 6px;font-size:14px">3-1. 저비용 대안과 결론 반전 조건</h3><p style="margin:0">권고: <b>${esc(sc.rec.name)}</b> — ${esc(sc.rec.why)}. 3년 순효과 ${fmt.sgn(sc.rec.net3, fmt.won)}원, 회수 ${fmt.mo(sc.rec.pb)} (목표 ${S.target}개월).</p>` +
+          (top.length ? `<ul class="notes">${top.map(F => `<li>${ic('alert', 'neg')}<span>${esc(flipSentence(fl, F, an))}</span></li>`).join('')}</ul>` : ''); })()}
       <h3 style="margin:20px 0 6px;font-size:14px">4. 로봇 도입 리스크</h3>
       ${M ? `<ul class="notes">${M.stress.slice().sort((a, b) => b.pb - a.pb).slice(0, 4).map(s => `<li>${ic('alert', 'neg')}<span>${esc(s.label)} → 회수 ${fmt.mo(s.pb)} (기준 ${fmt.mo(M.pb0)})</span></li>`).join('')}</ul>` : '<p class="tx3" style="margin:0">로봇 영향 분석 결과가 없습니다.</p>'}
       <h3 style="margin:20px 0 6px;font-size:14px">5. 주요 가정</h3>
       <p class="tx2" style="margin:0">1초 이산시간 흐름라인 시뮬레이션, 공통 난수 반복 실험. 인건비 ${fmt.n(({ ...E.DEFAULT_ECON, ...C.econ }).labor)}원/h, 공헌이익 ${fmt.n(({ ...E.DEFAULT_ECON, ...C.econ }).margin)}원/개, 클레임 ${fmt.won(({ ...E.DEFAULT_ECON, ...C.econ }).claim)}원/건, 연 ${spY()}교대. 품종 교체 ${S.risk.changeovers}회/교대, 램프업 ${S.risk.rampWeeks}주, SI 배수 ×${S.risk.capexMult}. 로봇 성능은 업체 공칭값 기반 가정이며 실제 도입 전 현장 검증이 필요합니다.</p>
     </div></article></div>`;
   $('#prBtn').onclick = () => window.print();
+  $('#pkgExport').onclick = exportPackage;
+  $('#pkgCheck').onclick = () => $('#pkgIn').click();
   $('#scExport').onclick = () => download(`takt-scenarios-${C.id}.json`, JSON.stringify(list, null, 2));
   $$('[data-ld]').forEach(b => b.onclick = () => { S.levers = clone(list[+b.dataset.ld].levers); persist(); S.robot = null; resetLive(); toast('현재 설계로 불러왔습니다'); });
   $$('[data-del]', $('#v-report')).forEach(b => b.onclick = () => { if (confirm('이 시나리오를 삭제할까요?')) { list.splice(+b.dataset.del, 1); saveScen(list); renderReport(); } });
@@ -1374,6 +1382,235 @@ $('#mesIn').onchange = async e => {
   S.mes = estimateMes(await TPL.readFileText(f)); renderOps();
 };
 
+/* ============================== DECISION: ALTERNATIVES + FLIP CONDITIONS ============================== */
+S.decide = null; S.target = 24;
+const aggMeans = r => ({ good: r.good.mean, escaped: r.escaped.mean, scrap: r.scrap.mean, kwh: r.kwh.mean });
+
+/** Standard low-cost alternatives generated from the case's bottleneck, plus robot options. */
+function genAlternatives(C) {
+  const base = baseLevers(C), cfg = cfgOf(base);
+  const load = cfg.stations.map(s => { const p = E.effectiveStation(s, cfg.risk, cfg.auto); return p.cycle / p.n / (isFinite(p.mtbf) ? p.mtbf / (p.mtbf + p.mttr) : 1); });
+  const b = load.indexOf(Math.max(...load)), bs = C.stations[b];
+  const A = [{ key: 'base', name: '현행 유지 (표준)', type: '기준', why: '추가 투자 없음', levers: base }];
+  { const lv = clone(base); let add = 0;
+    [b, b + 1].forEach(i => { if (i > 0 && i < C.stations.length) { const a = Math.max(3, lv.stations[i].buf); lv.stations[i].buf += a; lv.stations[i].extraCapex = a * 1e6; add += a; } });
+    if (add) A.push({ key: 'buf', name: '병목 앞뒤 버퍼 확대', type: '운영 개선', why: `${bs.name} 앞뒤 버퍼 +${add}칸 (칸당 100만 원 가정) — 막힘·결품 흡수`, levers: lv }); }
+  if (bs.kind === 'manual') {
+    const nb = [b - 1, b + 1].filter(j => j >= 0 && j < C.stations.length && C.stations[j].kind === 'manual').sort((x, y) => load[x] - load[y]);
+    if (nb.length) {
+      const j = nb[0], cb = bs.cycle, nB = bs.n, cj = C.stations[j].cycle, nJ = C.stations[j].n;
+      const t = Math.min((cb * nJ - cj * nB) / (nB + nJ), cb * 0.3);
+      if (t > 1) { const lv = clone(base); lv.stations[b].cycle = +(cb - t).toFixed(1); lv.stations[j].cycle = +(cj + t).toFixed(1); lv.stations[b].extraCapex = 5e6;
+        A.push({ key: 'rebal', name: '작업 재분배 (라인 밸런싱)', type: '운영 개선', why: `${bs.name} 작업 ${t.toFixed(1)}초를 ${C.stations[j].name}(으)로 이전 — 표준작업 개정·교육 500만 원 가정`, levers: lv }); }
+    }
+  }
+  { const lv = clone(base); lv.stations[b].n += 1;
+    A.push({ key: 'staff', name: `병목 ${bs.kind === 'machine' ? '설비' : '인원'} +1`, type: bs.kind === 'machine' ? '설비 투자' : '인력', why: `${bs.name} ${bs.n}→${bs.n + 1}${bs.kind === 'machine' ? '대' : '명'}`, levers: lv }); }
+  if (C.stations.some(s => s.mtbf)) { const lv = clone(base); lv.iot = true; A.push({ key: 'iot', name: 'IoT 예지보전', type: '디지털', why: '설비 고장의 70% 사전 감지 → 수리시간 30% (가정)', levers: lv }); }
+  E.autoOptionsFor(bs.kind).forEach(([k, o]) => { const lv = clone(base); lv.stations[b].auto = k;
+    A.push({ key: 'auto_' + k, name: `병목 ${o.label}`, type: o.robot ? '로봇·자동화' : '디지털', why: `${bs.name} ${bs.n}대를 ${o.label}로 전환`, levers: lv, robot: !!o.robot }); });
+  if (hasRobot(S.levers) && !A.some(a => JSON.stringify(a.levers) === JSON.stringify(S.levers)))
+    A.push({ key: 'design', name: '현재 설계', type: '로봇·자동화', why: describe(S.levers), levers: clone(S.levers), robot: true });
+  return { alts: A, bottleneck: b };
+}
+function scoreAlts(C, res, alts, target) {
+  const Y = yr(C), b = res.base;
+  const rows = alts.map(a => { const r = res[a.key], gain = a.key === 'base' ? 0 : (r.pnl.profit - b.pnl.profit) * Y;
+    return { ...a, r, gain, pb: a.key === 'base' ? 0 : gain > 0 ? r.capex / gain * 12 : Infinity, net3: 3 * gain - r.capex, meets: r.good.mean + r.escaped.mean >= C.demand }; });
+  const ok = rows.filter(x => x.key !== 'base' && x.pb <= target && x.r.capex <= C.budget);
+  const rec = (ok.length ? ok : rows.filter(x => x.key !== 'base' && x.net3 > 0)).sort((x, y) => y.net3 - x.net3)[0] || rows[0];
+  return { rows, rec };
+}
+
+/** Find where payback crosses the target along a factor. f(x) → payback months. */
+function findFlip(xs, pbs, cur, target, exactF) {
+  const feas = pbs.map(p => p <= target);
+  let best = null;
+  for (let k = 0; k < xs.length - 1; k++) {
+    if (feas[k] === feas[k + 1]) continue;
+    let lo = xs[k], hi = xs[k + 1], x;
+    if (exactF) { const fl = feas[k]; for (let it = 0; it < 50; it++) { const m = (lo + hi) / 2; if ((exactF(m) <= target) === fl) lo = m; else hi = m; } x = (lo + hi) / 2; }
+    else if (isFinite(pbs[k]) && isFinite(pbs[k + 1])) x = lo + (target - pbs[k]) * (hi - lo) / (pbs[k + 1] - pbs[k]);
+    else x = (lo + hi) / 2;
+    if (!best || Math.abs(x - cur) < Math.abs(best - cur)) best = x;
+  }
+  return best;
+}
+
+async function runDecide() {
+  const C = S.C, { alts, bottleneck } = genAlternatives(C);
+  const res = await run(alts.map(a => ({ key: a.key, levers: a.levers, risk: S.risk })), C.sim?.reps || 300, '대안 비교');
+  if (!res) return;
+  const sc = scoreAlts(C, res, alts, S.target);
+  const robotAlts = sc.rows.filter(x => x.robot).sort((x, y) => (x.r.capex <= C.budget ? 0 : 1) - (y.r.capex <= C.budget ? 0 : 1) || y.net3 - x.net3);
+  S.decide = { caseId: C.id, alts, res, bottleneck, sel: (robotAlts[0] || sc.rec).key, flip: null, sims: res._meta.sims };
+  renderDecide();
+  await runFlip();
+}
+
+async function runFlip() {
+  const D = S.decide, C = S.C, alt = D.alts.find(a => a.key === D.sel), ra = D.res[alt.key], rb = D.res.base, target = S.target;
+  const ec = { ...E.DEFAULT_ECON, ...C.econ };
+  const pbAt = (mod, rA = ra, rB = rb) => {
+    const C2 = { ...C, econ: { ...C.econ, ...(mod.econ || {}) }, demand: mod.demand ?? C.demand };
+    const gain = (E.pnl(E.buildConfig(C2, alt.levers, S.risk), aggMeans(rA)).profit - E.pnl(E.buildConfig(C2, baseLevers(C), S.risk), aggMeans(rB)).profit) * yr(C2);
+    return gain > 0 ? rA.capex * (mod.capexMult ?? 1) / gain * 12 : Infinity;
+  };
+  const geo = (lo, hi, n) => Array.from({ length: n }, (_, i) => lo * (hi / lo) ** (i / (n - 1)));
+  const factors = [
+    { id: 'labor', label: '인건비', unit: '원/인·h', cur: ec.labor, f: x => pbAt({ econ: { labor: x } }), xs: geo(ec.labor * 0.05, ec.labor * 6, 80), fmt: v => fmt.n(v) },
+    { id: 'demand', label: '수요', unit: '개/교대', cur: C.demand, f: x => pbAt({ demand: x }), xs: geo(C.demand * 0.1, C.demand * 3, 80), fmt: v => fmt.n(v) },
+    { id: 'margin', label: '단위당 공헌이익', unit: '원/개', cur: ec.margin, f: x => pbAt({ econ: { margin: x } }), xs: geo(ec.margin * 0.05, ec.margin * 10, 80), fmt: v => fmt.n(v) },
+    { id: 'capex', label: '투자비 (견적 오차)', unit: '배', cur: 1, f: x => pbAt({ capexMult: x }), xs: geo(0.1, 12, 80), fmt: v => '×' + v.toFixed(2) },
+    { id: 'claim', label: '불량 유출 클레임 비용', unit: '원/건', cur: ec.claim, f: x => pbAt({ econ: { claim: x } }), xs: geo(Math.max(1000, ec.claim * 0.01), ec.claim * 30, 80), fmt: v => fmt.won(v) },
+    { id: 'energy', label: '전력 단가', unit: '원/kWh', cur: ec.energyPrice, f: x => pbAt({ econ: { energyPrice: x } }), xs: geo(5, Math.max(50, ec.energyPrice) * 30, 80), fmt: v => fmt.n(v) },
+  ];
+  const out = factors.map(F => ({ ...F, thr: findFlip(F.xs, F.xs.map(F.f), F.cur, target, F.f) }));
+  const usesRobot = alt.levers.stations.some(s => s.auto && E.AUTOMATION[s.auto]?.robot);
+  if (usesRobot) {
+    const R = S.risk, simF = [
+      { id: 'microMult', label: '로봇 순간정지 빈도', unit: '배', mults: [0.5, 1, 2, 3, 5, 8, 12] },
+      { id: 'mtbfMult', label: '로봇 고장 간격 (MTBF)', unit: '배', mults: [0.1, 0.2, 0.33, 0.5, 0.75, 1, 2] },
+      { id: 'mttrMult', label: '로봇 수리시간 (정비 숙련도)', unit: '배', mults: [0.5, 1, 2, 3, 5, 8, 12] },
+    ];
+    const pts = [{ key: 'b', levers: baseLevers(C), risk: R }];
+    simF.forEach(F => F.mults.forEach((m, k) => pts.push({ key: `${F.id}_${k}`, levers: alt.levers, risk: { ...R, [F.id]: R[F.id] * m } })));
+    const res = await run(pts, 80, '결론 반전 조건');
+    if (!res) return;
+    simF.forEach(F => {
+      const xs = F.mults.map(m => R[F.id] * m), pbs = F.mults.map((m, k) => pbAt({}, res[`${F.id}_${k}`], res.b));
+      out.push({ ...F, cur: R[F.id], xs, pbs, thr: findFlip(xs, pbs, R[F.id], target), fmt: v => '×' + v.toFixed(2), sim: true });
+    });
+    D.flipSims = res._meta.sims;
+  }
+  const pb0 = pbAt({});
+  D.flip = { alt: alt.key, target, pb0, feasible: pb0 <= target, factors: out.map(F => {
+    const margin = F.thr == null ? null : (F.thr - F.cur) / F.cur;
+    const flipSide = F.thr == null ? null : F.thr > F.cur ? '이상' : '이하';
+    return { id: F.id, label: F.label, unit: F.unit, cur: F.cur, thr: F.thr, margin, flipSide, fmt: F.fmt, sim: !!F.sim };
+  }) };
+  renderDecide();
+}
+
+function flipSentence(fl, F, altName) {
+  if (F.thr == null) return `${F.label}: 검토 범위 안에서는 결론이 바뀌지 않습니다.`;
+  const thr = `${F.fmt(F.thr)}${F.unit === '배' ? '' : ' ' + F.unit}`;
+  return fl.feasible
+    ? `${F.label}이(가) 현재 ${F.fmt(F.cur)}에서 ${thr} ${F.flipSide}${F.flipSide === "이상" ? "이" : "가"} 되면 회수기간이 ${fl.target}개월을 넘어 '${altName}' 추천이 뒤집힙니다 (여유 ${fmt.sgn(F.margin * 100, x => fmt.n(x, 0))}%).`
+    : `${F.label}이(가) ${thr} ${F.flipSide}${F.flipSide === "이상" ? "이" : "가"} 되어야 '${altName}'의 회수기간이 ${fl.target}개월 이내가 됩니다 (현재 대비 ${fmt.sgn(F.margin * 100, x => fmt.n(x, 0))}%).`;
+}
+
+function renderDecide() {
+  const C = S.C, D = S.decide && S.decide.caseId === C.id ? S.decide : null;
+  const sc = D ? scoreAlts(C, D.res, D.alts, S.target) : null;
+  const altName = D ? D.alts.find(a => a.key === D.sel)?.name : '';
+  const fl = D?.flip && D.flip.alt === D.sel ? D.flip : null;
+  const ranked = fl ? fl.factors.filter(f => f.margin != null).sort((a, b) => Math.abs(a.margin) - Math.abs(b.margin)) : [];
+  $('#v-decide').innerHTML = `<div class="page">
+    <div class="page-head"><div><div class="label">${esc(C.company)} · ${esc(C.title)}</div><h1>대안 비교 · 결론 반전 조건</h1>
+      <p>로봇을 사기 전에 컨설턴트가 반드시 하는 두 가지 검토입니다. <b>① 더 싼 대안은 없는가</b> (버퍼·작업 재분배·증원·IoT를 같은 가정으로 비교), <b>② 어떤 조건이면 추천이 뒤집히는가</b> (손익분기 값을 자동 탐색).</p></div>
+      <div class="actions"><label class="tx2" style="display:flex;gap:8px;align-items:center;font-size:14px">목표 회수기간 <input type="number" id="dcT" value="${S.target}" min="1" style="width:80px"> 개월</label>
+        <button class="btn primary" id="dcRun">${ic('play')}대안 비교 + 반전 조건 실행</button></div></div>
+    ${!D ? `<div class="empty">${ic('swap')}<div style="margin-top:10px">실행하면 병목 공정(${esc(C.stations[genAlternatives(C).bottleneck].name)})을 기준으로 대안 ${genAlternatives(C).alts.length - 1}개를 자동으로 만들고, 표준과 같은 난수로 비교합니다.</div></div>` : `
+    <div class="callout"><div class="label" style="display:flex;gap:8px;align-items:center">권고 · 시뮬레이션 ${fmt.n(D.sims + (D.flipSims || 0))}회 ${validBadge()}</div>
+      <h2>${sc.rec.key === 'base' ? '현행 유지가 가장 낫습니다 — 검토한 대안 중 목표 회수기간을 만족하는 것이 없습니다' : `'${esc(sc.rec.name)}' — 3년 순효과 ${fmt.sgn(sc.rec.net3, fmt.won)}원, 회수 ${fmt.mo(sc.rec.pb)}`}</h2>
+      <p>${esc(sc.rec.why)}. 투자비 ${fmt.won(sc.rec.r.capex)}원, 연간 효과 ${fmt.sgn(sc.rec.gain, fmt.won)}원. 기준: 회수기간 ${S.target}개월 이내·예산 ${fmt.won(C.budget)}원 이내 대안 중 3년 순효과(3×연간 효과 − 투자비) 최대.</p></div>
+    <div class="grid75">
+      <div class="panel"><div class="panel-h"><h3>대안 비교 · 표준 고정</h3><span class="sub">같은 난수(CRN) · ${D.res.base.reps}회 반복</span></div>
+        <div class="tbl-wrap"><table class="t"><thead><tr><th>대안</th><th>투자비</th><th>양품 /교대</th><th>목표 달성</th><th>연간 효과</th><th>회수</th><th>3년 순효과</th></tr></thead><tbody>
+        ${sc.rows.map(x => `<tr class="${x.key === 'base' ? 'base' : ''} ${x.key === sc.rec.key ? 'best' : ''}">
+          <td class="txt l"><span class="tag ${x.type === '로봇·자동화' ? 'acc' : ''}">${esc(x.type)}</span> <b>${esc(x.name)}</b> ${x.key === sc.rec.key ? '<span class="tag pos">권고</span>' : ''}<div class="tx3" style="font-size:12.5px">${esc(x.why)}</div></td>
+          <td>${fmt.won(x.r.capex)}</td><td>${fmt.n(x.r.good.mean, 1)} <span class="tx3">±${fmt.n(x.r.good.ci95, 1)}</span></td>
+          <td class="${x.r.serviceLevel >= 0.9 ? 'pos' : x.r.serviceLevel < 0.5 ? 'neg' : ''}">${fmt.pct(x.r.serviceLevel)}</td>
+          <td class="${x.gain > 0 ? 'pos' : x.gain < 0 ? 'neg' : ''}">${x.key === 'base' ? '기준' : fmt.sgn(x.gain, fmt.won)}</td>
+          <td>${x.key === 'base' ? '—' : fmt.mo(x.pb)}</td><td class="${x.net3 > 0 ? 'pos' : x.net3 < 0 ? 'neg' : ''}">${x.key === 'base' ? '—' : fmt.sgn(x.net3, fmt.won)}</td></tr>`).join('')}
+        </tbody></table></div></div>
+      <div class="panel"><div class="panel-h"><h3>3년 순효과</h3><span class="sub">3 × 연간 효과 − 투자비</span></div><div class="panel-b">
+        <p class="chart-sub">${sc.rows.filter(x => x.type === '운영 개선' && x.net3 > 0).length ? '운영 개선만으로도 이익이 납니다. 로봇은 이 대안들보다 나을 때만 정당화됩니다.' : '운영 개선만으로는 충분하지 않습니다.'}</p>
+        ${CH.tornado({ rows: sc.rows.filter(x => x.key !== 'base').sort((a, b) => b.net3 - a.net3).map(x => ({ label: x.name.length > 14 ? x.name.slice(0, 13) + '…' : x.name, value: x.net3, note: fmt.won(x.net3), bad: x.net3 < 0 })), W: chartW(f75(5)), baseLabel: '0원', fmt: v => fmt.won(v) })}</div></div>
+    </div>
+
+    <div class="panel"><div class="panel-h"><h3>결론 반전 조건</h3>
+      <div class="actions"><span class="tx2" style="font-size:14px">분석 대상</span><select id="dcSel" style="width:auto">${D.alts.filter(a => a.key !== 'base').map(a => `<option value="${a.key}" ${a.key === D.sel ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select>
+      <button class="btn sm" id="dcFlip">${ic('play')}다시 분석</button></div></div>
+      <div class="panel-b">${fl ? `
+        <p class="chart-sub">'${esc(altName)}'의 현재 회수기간은 <b>${fmt.mo(fl.pb0)}</b>로 목표 ${fl.target}개월을 ${fl.feasible ? '<span class="pos">충족</span>합니다. 아래 값을 넘으면 결론이 뒤집힙니다' : '<span class="neg">충족하지 못합니다</span>. 아래 값이 되어야 기준을 충족합니다'}. 여유가 작을수록 취약한 가정입니다.</p>
+        <ul class="notes" style="margin-bottom:12px">${ranked.length ? '' : `<li>${ic('check', 'pos')}<span>검토한 범위(인건비 0.05~6배, 투자비 0.1~12배, 로봇 순간정지·수리시간 최대 12배 등) 안에서는 결론이 뒤집히지 않습니다. 매우 견고한 결론이므로, 목표 회수기간을 줄이거나 다른 대안을 골라 비교해 보세요.</span></li>`}${ranked.slice(0, 3).map(F => `<li>${ic(Math.abs(F.margin) < 0.25 ? 'alert' : 'info', Math.abs(F.margin) < 0.25 ? 'neg' : '')}<span>${esc(flipSentence(fl, F, altName))}</span></li>`).join('')}</ul>
+        <div class="grid2">
+          <div>${ranked.length ? CH.tornado({ rows: ranked.map(F => ({ label: F.label.length > 15 ? F.label.slice(0, 14) + '…' : F.label, value: F.margin * 100, note: `${F.fmt(F.thr)} (${fmt.sgn(F.margin * 100, x => fmt.n(x, 0))}%)`, bad: Math.abs(F.margin) < 0.25 })), W: chartW(.5, false), baseLabel: '현재 가정', fmt: v => fmt.n(v, 0) + '%' }) : '<div class="tx3">검토 범위 안에서 결론이 바뀌는 요인이 없습니다.</div>'}</div>
+          <div class="tbl-wrap"><table class="t"><thead><tr><th>요인</th><th>현재</th><th>반전 임계값</th><th>여유</th></tr></thead><tbody>
+            ${fl.factors.map(F => `<tr><td class="txt l">${esc(F.label)}${F.sim ? ' <span class="tag">시뮬레이션</span>' : ''}</td><td>${F.fmt(F.cur)}</td><td>${F.thr == null ? '<span class="tx3">범위 내 없음</span>' : `<b>${F.fmt(F.thr)}</b> ${F.flipSide}`}</td>
+              <td class="${F.margin == null ? '' : Math.abs(F.margin) < 0.25 ? 'neg' : 'pos'}">${F.margin == null ? '—' : fmt.sgn(F.margin * 100, x => fmt.n(x, 0)) + '%'}</td></tr>`).join('')}
+          </tbody></table></div>
+        </div>
+        <p class="tx3" style="font-size:13px;margin:12px 0 0">경제 요인(인건비·수요·공헌이익·투자비·클레임·전력)은 같은 시뮬레이션 결과에서 손익을 다시 계산해 정확히 탐색하고, 로봇 요인은 7개 값에서 각 80회씩 다시 시뮬레이션해 보간합니다. 면접·보고서에서는 여유가 가장 작은 가정부터 현장에서 확인하세요.</p>`
+        : '<div class="tx3">분석 중이거나 아직 분석하지 않았습니다.</div>'}</div></div>`}
+  </div>`;
+  $('#dcT').onchange = e => { const v = parseFloat(e.target.value); if (v > 0) { S.target = v; if (S.decide) { S.decide.flip = null; renderDecide(); runFlip(); } } };
+  $('#dcRun').onclick = runDecide;
+  const sel = $('#dcSel'); if (sel) sel.onchange = e => { S.decide.sel = e.target.value; S.decide.flip = null; renderDecide(); runFlip(); };
+  const fb = $('#dcFlip'); if (fb) fb.onclick = runFlip;
+}
+
+/* ============================== REPRODUCIBILITY PACKAGE ============================== */
+S.repro = null;
+const pickRes = r => ({ good: r.good.mean, goodCi: r.good.ci95, escaped: r.escaped.mean, lt: r.lt.mean, wip: r.wip.mean, profitPerShift: r.pnl.profit, capex: r.capex, kwh: r.kwh.mean });
+async function exportPackage() {
+  const C = S.C, lv = clone(S.levers), reps = C.sim?.reps || 300;
+  const caseDef = { ...clone(C), risk: { ...S.risk } };
+  const res = await run([{ key: 'base', levers: baseLevers(caseDef), risk: S.risk }, { key: 'design', levers: lv, risk: S.risk }], reps, '재현 패키지', undefined, caseDef);
+  if (!res) return;
+  const v = loadValid();
+  const pkg = {
+    format: 'takt-reproducibility-package', formatVersion: 1, engine: E.ENGINE_VERSION, created: new Date().toISOString(),
+    app: location.origin + location.pathname, source: 'https://github.com/CHASEUNGHYEON-CEO/takt',
+    howToReproduce: 'Takt › 시나리오·보고서 › 재현 검사에 이 파일을 올리면 같은 입력·시드·반복 수로 다시 실행해 기대 결과와 비교합니다.',
+    run: { reps, seed: caseDef.sim?.seed ?? 1000, replicationSeeds: 'seed + r × 7919 (r = 0…reps−1)', designDescription: describe(lv, caseDef) },
+    case: caseDef, levers: lv,
+    expected: { base: pickRes(res.base), design: pickRes(res.design) },
+    tolerance: { sameEngineVersion: '완전 일치 (상대오차 1e-9)', otherEngineVersion: '양품 ±max(2×95%CI, 1%), 그 외 ±2%' },
+    modelValidation: v ? { date: v.date, passed: v.results.filter(r => r.pass).length, total: v.results.length } : null,
+  };
+  download(`takt-재현패키지-${C.company}-${pkg.created.slice(0, 10)}.json`.replace(/[\\/:*?"<>|\s]+/g, '_'), JSON.stringify(pkg, null, 2));
+  toast('재현 패키지를 내보냈습니다');
+}
+async function checkPackage(text, name) {
+  let pkg; try { pkg = JSON.parse(text); } catch { toast('JSON 파일이 아닙니다'); return; }
+  if (pkg.format !== 'takt-reproducibility-package') { toast('Takt 재현 패키지가 아닙니다'); return; }
+  const C = pkg.case, risk = C.risk || {};
+  const res = await run([{ key: 'base', levers: baseLevers(C), risk }, { key: 'design', levers: pkg.levers, risk }], pkg.run.reps, '재현 검사', undefined, C);
+  if (!res) return;
+  const same = pkg.engine === E.ENGINE_VERSION, rows = [];
+  [['base', '표준'], ['design', '설계']].forEach(([k, lbl]) => {
+    const got = pickRes(res[k]), exp = pkg.expected[k];
+    [['good', '양품 /교대'], ['escaped', '불량 유출'], ['lt', '리드타임'], ['wip', '평균 재공'], ['profitPerShift', '교대당 이익'], ['capex', '투자비']].forEach(([m, label]) => {
+      const e = exp[m], g = got[m], diff = Math.abs(g - e), rel = diff / Math.max(1e-9, Math.abs(e));
+      const tol = same ? 1e-9 : m === 'good' ? Math.max(2 * exp.goodCi, Math.abs(e) * 0.01) / Math.max(1e-9, Math.abs(e)) : 0.02;
+      rows.push({ scen: lbl, label, e, g, rel, pass: rel <= tol + 1e-12 });
+    });
+  });
+  S.repro = { name, pkg, rows, same, pass: rows.every(r => r.pass) };
+  renderReport();
+}
+function reproPanel() {
+  const R = S.repro;
+  return `<div class="panel no-print"><div class="panel-h"><h3>재현 패키지</h3><span class="sub">입력·시드·반복 수·엔진 버전·기대 결과를 한 파일로 — 누구나 같은 결과를 재현하고 가정을 바꿔 반박할 수 있게</span></div>
+    <div class="panel-b"><div class="actions">
+      <button class="btn primary" id="pkgExport">${ic('download')}현재 설계로 재현 패키지 내보내기</button>
+      <button class="btn" id="pkgCheck">${ic('upload')}재현 검사 (패키지 올리기)</button>
+      <span class="tx3" style="font-size:13px">엔진 버전 ${E.ENGINE_VERSION} · 시드 ${S.C?.sim?.seed ?? 1000} · 반복 ${fmt.n(S.C?.sim?.reps || 300)}회</span></div>
+      ${R ? `<div style="margin-top:16px"><div class="callout ${R.pass ? '' : 'warn-box'}" style="padding:16px 20px"><div class="label">${esc(R.name)} · 엔진 ${esc(R.pkg.engine)}${R.same ? ' (현재와 같음 → 완전 일치 기준)' : ' (현재와 다름 → 통계적 허용 오차 기준)'}</div>
+          <h2 style="font-size:20px">${R.pass ? `재현 성공 — ${R.rows.length}개 지표 모두 기대 결과와 일치` : `재현 실패 — ${R.rows.filter(r => !r.pass).length}개 지표가 허용 오차를 벗어남`}</h2></div>
+        <div class="tbl-wrap" style="margin-top:12px"><table class="t"><thead><tr><th>시나리오</th><th>지표</th><th>기대</th><th>재실행</th><th>차이</th><th>결과</th></tr></thead><tbody>
+          ${R.rows.map(r => `<tr><td class="txt l">${r.scen}</td><td class="txt l">${r.label}</td><td>${fmt.n(r.e, 2)}</td><td>${fmt.n(r.g, 2)}</td><td>${r.rel < 1e-9 ? '0' : fmt.pct(r.rel, 3)}</td><td><span class="tag ${r.pass ? 'pos' : 'neg'}">${r.pass ? '일치' : '불일치'}</span></td></tr>`).join('')}
+        </tbody></table></div></div>` : ''}
+    </div></div>`;
+}
+$('#pkgIn').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return; e.target.value = '';
+  checkPackage(await f.text(), f.name);
+};
+
 /* ============================== boot ============================== */
 (function boot() {
   let theme = 'light'; try { theme = localStorage.getItem('takt.theme.v2') || 'light'; } catch {}
@@ -1382,7 +1619,7 @@ $('#mesIn').onchange = async e => {
   if (sess?.risk) S.risk = { ...E.DEFAULT_RISK, ...sess.risk };
   if (sess?.caseId) openCase(sess.caseId, sess.levers, sess.draft);
   const want = location.hash.slice(1);
-  setView(['free', 'valid'].includes(want) ? want : S.C && ['line', 'robot', 'exp', 'report', 'cond', 'ops'].includes(want) ? want : 'cases');
+  setView(['free', 'valid'].includes(want) ? want : S.C && ['line', 'robot', 'exp', 'report', 'cond', 'ops', 'decide'].includes(want) ? want : 'cases');
   let rz = 0;
   addEventListener('resize', () => {
     if (S.view === 'line') drawLive(true);
