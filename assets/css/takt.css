@@ -196,6 +196,7 @@ svg.chart .ax { stroke: var(--line-strong); stroke-width: 1; }
 .st-row .ctl { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; font-size: 13px; }
 .st-row .ctl select { flex: 1; min-width: 140px; height: 32px; font-size: 13px; }
 .kv { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; font-size: 14px; margin: 0; }
+table.t td.l { text-align: left; }
 .kv dt { color: var(--tx3); } .kv dd { margin: 0; text-align: right; font-weight: 600; }
 
 /* form */

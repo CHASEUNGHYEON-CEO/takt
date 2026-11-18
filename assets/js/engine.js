@@ -3,31 +3,33 @@
 // operation-dependent failures, robot micro-stops, changeovers, defects + inspection.
 
 export const KINDS = {
-  manual:  { label: '수작업', setupMin: 5,  serverCapex: 30e6 },
-  machine: { label: '설비',   setupMin: 10, serverCapex: 250e6 },
-  inspect: { label: '검사',   setupMin: 5,  serverCapex: 30e6 },
+  manual:  { label: '수작업', setupMin: 5,  serverCapex: 30e6, kwRun: 0.3, kwIdle: 0.1 },
+  machine: { label: '설비',   setupMin: 10, serverCapex: 250e6, kwRun: 15, kwIdle: 4 },
+  inspect: { label: '검사',   setupMin: 5,  serverCapex: 30e6, kwRun: 0.5, kwIdle: 0.2 },
 };
 
 // Automation options per station kind. Robot profiles carry both the benefit and the risk side.
 export const AUTOMATION = {
   cobot:      { kind: 'manual',  label: '협동로봇',         short: 'COBOT',
                 cycle: 0.90, cv: 0.05, defect: 0.30, ops: 0.25, capex: 150e6, opex: 4000,
-                mtbf: 6, mttr: 25, microEvery: 40, microSec: 90, setupMin: 15, robot: true },
+                mtbf: 6, mttr: 25, microEvery: 40, microSec: 90, setupMin: 15, robot: true, kwRun: 0.6, kwIdle: 0.2 },
   industrial: { kind: 'manual',  label: '산업용 로봇(펜스)', short: 'IND',
                 cycle: 0.60, cv: 0.03, defect: 0.25, ops: 0.15, capex: 300e6, opex: 7000,
-                mtbf: 9, mttr: 40, microEvery: 60, microSec: 75, setupMin: 30, robot: true },
+                mtbf: 9, mttr: 40, microEvery: 60, microSec: 75, setupMin: 30, robot: true, kwRun: 6, kwIdle: 1.5 },
   loadcell:   { kind: 'machine', label: '자동 로딩 셀',     short: 'CELL',
                 cycle: 0.90, cv: 0.05, defect: 1.00, ops: 0.30, capex: 120e6, opex: 4000,
-                microEvery: 90, microSec: 60, setupMin: 12, robot: true },
+                microEvery: 90, microSec: 60, setupMin: 12, robot: true, kwRun: 2, kwIdle: 0.6 },
   aivision:   { kind: 'inspect', label: 'AI 비전검사',      short: 'AI',
                 cycle: 0.60, cv: 0.05, defect: 1.00, ops: 0.25, capex: 80e6, opex: 3000,
-                detect: 0.98, setupMin: 5, robot: false },
+                detect: 0.98, setupMin: 5, robot: false, kwRun: 1.2, kwIdle: 0.5 },
 };
 export const autoOptionsFor = kind => Object.entries(AUTOMATION).filter(([, a]) => a.kind === kind);
 
 export const DEFAULT_ECON = {
   margin: 30000, labor: 35000, iotOpex: 3000, iotBase: 30e6, iotPerMachine: 5e6,
   iotPredict: 0.7, iotRepair: 0.3, shortage: 10000, claim: 300000, scrap: 20000, shiftsPerYear: 500,
+  energyPrice: 170,     // 산업용 전력 단가 가정 (원/kWh) — EMS 지표용
+ 
 };
 
 // Risk knobs for robot deployment. Multipliers are relative to the vendor-nominal profile.
@@ -74,7 +76,8 @@ export function effectiveStation(s, risk = DEFAULT_RISK, P = AUTOMATION) {
       if (risk.ideal) { mtbf = Infinity; microMean = Infinity; setup = k.setupMin * M; }
     }
   }
-  return { name: s.name, kind: s.kind, auto: a ? s.auto : null, autoLabel: a ? a.label : null, robot: !!(a && a.robot),
+  const kwRun = (k.kwRun || 0) + (a ? a.kwRun || 0 : 0), kwIdle = (k.kwIdle || 0) + (a ? a.kwIdle || 0 : 0);
+  return { kwRun, kwIdle, name: s.name, kind: s.kind, auto: a ? s.auto : null, autoLabel: a ? a.label : null, robot: !!(a && a.robot),
            n: Math.max(1, s.n | 0), buf: Math.max(1, s.buf | 0),
            cycle: Math.max(1, cycle), cv, defect, detect, mtbf, mttr, microMean, microSec, setup, ops, opex };
 }
@@ -102,7 +105,7 @@ export function createSim(cfg, seed, { trace = false } = {}) {
   const expo = m => isFinite(m) ? -Math.log(1 - rng()) * m : Infinity;
   const S = cfg.stations.map(raw => {
     const p = effectiveStation(raw, cfg.risk, cfg.auto);
-    p.q = []; p.cnt = { busy: 0, blocked: 0, down: 0, idle: 0, minor: 0 };
+    p.q = []; p.cnt = { busy: 0, blocked: 0, down: 0, idle: 0, minor: 0, fail: 0, pm: 0, setup: 0, micro: 0 }; p.proc = 0; p.defm = 0;
     p.servers = Array.from({ length: p.n }, () => ({ st: 'idle', rem: 0, item: null, ttf: expo(p.mtbf), tm: expo(p.microMean), down: 0, dk: '' }));
     return p;
   });
@@ -125,9 +128,20 @@ export function createSim(cfg, seed, { trace = false } = {}) {
     }
     v.item = null; v.st = 'idle';
   }
+  /** Start the next item. carry ≥ 0: time left in this second after a completion; carry < 0: fresh start (whole second worked). */
+  function pull(i, s, v, carry) {
+    let item = null;
+    if (i === 0) { item = { t0: sim.t + (carry > 0 ? 1 - carry : 0), d: false }; sim.started++; }
+    else if (s.q.length) item = s.q.shift();
+    if (!item) return false;
+    v.item = item; v.st = 'busy';
+    v.rem = cycleOf(s) - (carry >= 0 ? carry : 1);
+    return true;
+  }
   function finish(i, v) {
     const s = S[i], item = v.item;
-    if (!item.d && rng() < s.defect) item.d = true;
+    s.proc++;
+    if (!item.d && rng() < s.defect) { item.d = true; s.defm++; }
     if (s.kind === 'inspect' && item.d && rng() < s.detect) { sim.scrap++; v.item = null; v.st = 'idle'; return; }
     tryPush(i, v);
   }
@@ -140,6 +154,7 @@ export function createSim(cfg, seed, { trace = false } = {}) {
       for (const v of s.servers) {
         if (v.st === 'down') {
           if (v.dk === 'setup' || v.dk === 'micro') s.cnt.minor++; else s.cnt.down++;
+          s.cnt[v.dk === 'pm' ? 'pm' : v.dk === 'setup' ? 'setup' : v.dk === 'micro' ? 'micro' : 'fail']++;
           if (--v.down <= 0) { v.st = v.item ? 'busy' : 'idle'; v.dk = ''; }
           continue;
         }
@@ -156,15 +171,17 @@ export function createSim(cfg, seed, { trace = false } = {}) {
             sim.micro++; v.st = 'down'; v.dk = 'micro'; v.down = Math.max(1, expo(s.microSec)); v.tm = expo(s.microMean);
             continue;
           }
-          if (v.rem <= 0) finish(i, v);
+          if (v.rem <= 0) {
+            // Item finished part-way through this second: hand the unused fraction to the next item
+            // so cycles are not rounded up to whole seconds (validated against n·3600/c).
+            const carry = -v.rem;
+            finish(i, v);
+            if (v.st === 'idle') pull(i, s, v, carry);
+          }
           continue;
         }
         if (v.st === 'blocked') { s.cnt.blocked++; tryPush(i, v); continue; }
-        let item = null;
-        if (i === 0) { item = { t0: sim.t, d: false }; sim.started++; }
-        else if (s.q.length) item = s.q.shift();
-        if (item) { v.item = item; v.rem = cycleOf(s); v.st = 'busy'; s.cnt.busy++; }
-        else s.cnt.idle++;
+        if (pull(i, s, v, -1)) s.cnt.busy++; else s.cnt.idle++;
       }
     }
     sim.t++;
@@ -181,11 +198,41 @@ export const STATE_KEYS = ['busy', 'blocked', 'down', 'idle', 'minor'];
 
 export function summarize(sim) {
   const T = Math.max(1, sim.t);
+  const sx = sim.S.map(s => ({ proc: s.proc, defm: s.defm, busy: s.cnt.busy, blocked: s.cnt.blocked, idle: s.cnt.idle, fail: s.cnt.fail, pm: s.cnt.pm, setup: s.cnt.setup, micro: s.cnt.micro,
+    kwh: (s.cnt.busy * s.kwRun + (s.n * T - s.cnt.busy) * s.kwIdle) / 3600 }));
   return {
     good: sim.good, escaped: sim.escaped, scrap: sim.scrap, done: sim.done,
     lt: sim.done ? sim.ltSum / sim.done / 60 : 0,
     wip: sim.wipSum / T, failures: sim.failures, predicted: sim.predicted, micro: sim.micro,
+    kwh: sx.reduce((a, x) => a + x.kwh, 0),
     st: sim.S.map(s => { const tot = s.n * T; return STATE_KEYS.map(k => s.cnt[k] / tot); }),
+    sx,
+  };
+}
+
+/** Station-level OEE (TPM): A × P × Q with the six-loss breakdown, from aggregated means. */
+export function oee(cfg, agg) {
+  const T = cfg.shiftSec;
+  return agg.sx.map((x, i) => {
+    const p = effectiveStation(cfg.stations[i], cfg.risk, cfg.auto), tot = p.n * T;
+    const stops = x.fail + x.pm + x.setup, run = Math.max(1, tot - stops);
+    const A = run / tot, P = Math.min(1, x.proc * p.cycle / run), Q = x.proc ? (x.proc - x.defm) / x.proc : 1;
+    return { name: p.name, A, P, Q, oee: A * P * Q, ct: p.cycle / p.n, cycle: p.cycle, n: p.n, kwh: x.kwh,
+      loss: { fail: (x.fail + x.pm) / tot, setup: x.setup / tot, micro: x.micro / tot, flow: (x.blocked + x.idle) / tot,
+              speed: Math.max(0, x.busy - x.proc * p.cycle) / tot, defect: Math.min(x.busy, x.defm * p.cycle) / tot } };
+  });
+}
+/** Line-level industrial metrics: line OEE, line balance ratio, value-added ratio, takt gap, energy per unit. */
+export function lineMetrics(cfg, agg) {
+  const st = oee(cfg, agg), T = cfg.shiftSec, takt = T / cfg.demand;
+  const cts = st.map(s => s.ct), maxCt = Math.max(...cts);
+  const good = agg.good.mean, out = good + agg.escaped.mean;
+  return {
+    stations: st, takt, maxCt,
+    lineOEE: good * maxCt / T,
+    lbr: cts.reduce((a, b) => a + b, 0) / (cts.length * maxCt),
+    vaRatio: agg.lt.mean > 0 ? st.reduce((a, s) => a + s.cycle, 0) / (agg.lt.mean * 60) : 0,
+    kwh: agg.kwh.mean, kwhPerUnit: out > 0 ? agg.kwh.mean / out : 0,
   };
 }
 
@@ -211,8 +258,8 @@ export function pnl(cfg, m) {
   let labor = 0, opex = 0;
   cfg.stations.forEach(raw => { const p = effectiveStation(raw, cfg.risk, cfg.auto); labor += p.n * p.ops * E.labor * h; opex += p.n * p.opex * h; });
   if (cfg.iot) opex += E.iotOpex * h;
-  const r = { revenue: sold * E.margin, shortage: short * E.shortage, claim: m.escaped * E.claim, scrap: m.scrap * E.scrap, labor, opex };
-  r.profit = r.revenue - r.shortage - r.claim - r.scrap - r.labor - r.opex;
+  const r = { revenue: sold * E.margin, shortage: short * E.shortage, claim: m.escaped * E.claim, scrap: m.scrap * E.scrap, labor, opex, energy: (m.kwh || 0) * (E.energyPrice || 0) };
+  r.profit = r.revenue - r.shortage - r.claim - r.scrap - r.labor - r.opex - r.energy;
   return r;
 }
 export const shiftProfit = (cfg, r) => pnl(cfg, r).profit;
@@ -241,12 +288,15 @@ export function aggregate(cfg, caseDef, runs) {
     reps: runs.length,
     good: stats(pick('good')), escaped: stats(pick('escaped')), scrap: stats(pick('scrap')),
     lt: stats(pick('lt')), wip: stats(pick('wip')), profit: stats(pick('profit')),
-    failures: stats(pick('failures')), micro: stats(pick('micro')),
+    failures: stats(pick('failures')), micro: stats(pick('micro')), kwh: stats(pick('kwh')),
     serviceLevel: runs.filter(r => r.good + r.escaped >= cfg.demand).length / runs.length,
-    goodDist: pick('good'),
+    goodDist: pick('good'), escDist: pick('escaped'), ltDist: pick('lt'), wipDist: pick('wip'),
     st, capex: capex(cfg, caseDef), headcount: headcount(cfg),
+    sx: Array.from({ length: nS }, (_, i) => {
+      const o = {}; for (const k in runs[0].sx[i]) o[k] = runs.reduce((a, r) => a + r.sx[i][k], 0) / runs.length; return o;
+    }),
   };
-  agg.pnl = pnl(cfg, { good: agg.good.mean, escaped: agg.escaped.mean, scrap: agg.scrap.mean });
+  agg.pnl = pnl(cfg, { good: agg.good.mean, escaped: agg.escaped.mean, scrap: agg.scrap.mean, kwh: agg.kwh.mean });
   return agg;
 }
 

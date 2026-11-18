@@ -32,7 +32,7 @@ export async function readFileText(file) {
 /* ---------- vocabularies ---------- */
 const norm = k => String(k || '').replace(/\(.*?\)/g, '').replace(/[\s·_\-/]/g, '').toLowerCase();
 const CASE_KEYS = { 회사: 'company', 산업: 'industry', 과제명: 'title', 태그: 'tags', 상황: 'situation', 미션: 'mission', 목표: 'mission', 제약: 'constraints', 제약조건: 'constraints', 수요: 'demand', 교대시간: 'shiftHours', 투자예산: 'budget', 예산: 'budget' };
-const ECON_KEYS = { 공헌이익: 'margin', 인건비: 'labor', 불량유출클레임: 'claim', 클레임: 'claim', 폐기손실: 'scrap', 미납페널티: 'shortage', 연간교대수: 'shiftsPerYear', iot구축비: 'iotBase', iot설비당: 'iotPerMachine', iot사전감지율: 'iotPredict', iot수리시간비율: 'iotRepair' };
+const ECON_KEYS = { 공헌이익: 'margin', 인건비: 'labor', 불량유출클레임: 'claim', 클레임: 'claim', 폐기손실: 'scrap', 미납페널티: 'shortage', 연간교대수: 'shiftsPerYear', iot구축비: 'iotBase', iot설비당: 'iotPerMachine', iot사전감지율: 'iotPredict', iot수리시간비율: 'iotRepair', 전력단가: 'energyPrice' };
 const SIM_KEYS = { 반복횟수: ['sim', 'reps'], 난수시드: ['sim', 'seed'], 품종교체: ['risk', 'changeovers'], 램프업기간: ['risk', 'rampWeeks'], 램프업초기효율: ['risk', 'rampStart'],
   si비용배수: ['risk', 'capexMult'], 순간정지배수: ['risk', 'microMult'], 수리시간배수: ['risk', 'mttrMult'], 로봇사이클배수: ['risk', 'speedMult'], 로봇고장간격배수: ['risk', 'mtbfMult'], 셋업시간배수: ['risk', 'setupMult'] };
 export const PROFILE_ROWS = [['사이클 배수', 'cycle'], ['불량 배수', 'defect'], ['인력 비율', 'ops'], ['투자비(원/대)', 'capex'], ['운영비(원/h)', 'opex'], ['MTBF(h)', 'mtbf'], ['MTTR(min)', 'mttr'],
@@ -60,7 +60,7 @@ export function caseToRows(C, scenarios = [], { guide = true } = {}) {
     [],
     ['[경제성]'], ['항목', '값'],
     ['공헌이익(원/개)', E.margin], ['인건비(원/인·h)', E.labor], ['불량유출 클레임(원/건)', E.claim], ['폐기손실(원/개)', E.scrap], ['미납페널티(원/개)', E.shortage],
-    ['연간교대수', E.shiftsPerYear], ['IoT 구축비(원)', E.iotBase], ['IoT 설비당(원)', E.iotPerMachine], ['IoT 사전감지율(%)', E.iotPredict * 100], ['IoT 수리시간비율', E.iotRepair],
+    ['연간교대수', E.shiftsPerYear], ['IoT 구축비(원)', E.iotBase], ['IoT 설비당(원)', E.iotPerMachine], ['IoT 사전감지율(%)', E.iotPredict * 100], ['IoT 수리시간비율', E.iotRepair], ['전력단가(원/kWh)', E.energyPrice],
     [],
     ['[공정]'],
     ...g('유형: 수작업 / 설비 / 검사. 변동계수 = 사이클 표준편차 ÷ 평균. MTBF·MTTR은 고장이 있는 설비만 입력. 검출률은 검사 공정만.'),

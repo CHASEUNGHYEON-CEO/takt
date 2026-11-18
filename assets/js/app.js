@@ -3,6 +3,7 @@ import { evaluate, cancelAll, poolSize } from './pool.js';
 import { PRESETS, loadCustom, saveCustom, allCases, blankCase } from './cases.js';
 import * as CH from './charts.js';
 import * as TPL from './template.js';
+import * as V from './validate.js';
 
 /* ============================== utilities ============================== */
 const $ = (s, el = document) => el.querySelector(s);
@@ -32,6 +33,9 @@ const ICON = {
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  gauge: '<path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1.5"/>',
+  badge: '<path d="M12 3l2.5 2 3.2-.3.9 3.1 2.7 1.8-1.2 3 1.2 3-2.7 1.8-.9 3.1-3.2-.3L12 21l-2.5-2-3.2.3-.9-3.1-2.7-1.8 1.2-3-1.2-3 2.7-1.8.9-3.1 3.2.3z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
+  database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
   sheet: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18"/>', swap: '<path d="M7 4l-4 4 4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>',
 };
 const ic = (n, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24">${ICON[n] || ''}</svg>`;
@@ -122,9 +126,9 @@ $('#runCancel').onclick = () => { cancelAll(); toast('실행을 취소했습니�
 /* ============================== shell ============================== */
 const NAV = [
   ['cases', 'folder', '케이스'], ['free', 'sheet', '자유 시뮬레이션'], ['line', 'line', '라인 모델'], ['cond', 'sliders', '시뮬레이션 조건'],
-  ['robot', 'bot', '로봇 영향 분석'], ['exp', 'flask', '실험'], ['report', 'report', '시나리오·보고서'],
+  ['robot', 'bot', '로봇 영향 분석'], ['ops', 'gauge', 'OEE·라인 지표'], ['exp', 'flask', '실험'], ['report', 'report', '시나리오·보고서'], ['valid', 'badge', '모델 검증'],
 ];
-const NO_CASE_OK = ['cases', 'free'];
+const NO_CASE_OK = ['cases', 'free', 'valid'];
 function renderNav() {
   $$('#nav a').forEach(a => {
     const [v, icon, label] = NAV.find(n => n[0] === a.dataset.view);
@@ -145,7 +149,7 @@ function setView(v) {
   S.view = v; location.hash = v;
   $$('.view').forEach(el => el.classList.toggle('on', el.id === 'v-' + v));
   renderNav();
-  ({ cases: renderCases, editor: renderEditor, line: renderLine, robot: renderRobot, exp: renderExp, report: renderReport, free: renderFree, cond: renderCond })[v]?.();
+  ({ cases: renderCases, editor: renderEditor, line: renderLine, robot: renderRobot, exp: renderExp, report: renderReport, free: renderFree, cond: renderCond, ops: renderOps, valid: renderValid })[v]?.();
   $('#main').scrollTop = 0;
 }
 function applyTheme(t) {
@@ -579,6 +583,7 @@ function robotModel() {
     labor: (b.labor - n.labor) * Y,
     quality: ((b.claim + b.scrap) - (n.claim + n.scrap)) * Y,
     opex: (b.opex - n.opex) * Y,
+    energy: (b.energy - n.energy) * Y,
   };
   const siCap = capex + robotCapex(levers) * 0.6;
   const stress = [
@@ -668,6 +673,7 @@ function robotResults() {
     { label: '인건비\n절감', value: M.bridge.labor, kind: 'delta' },
     { label: '품질\n비용', value: M.bridge.quality, kind: 'delta' },
     { label: '로봇\n운영비', value: M.bridge.opex, kind: 'delta' },
+    { label: '전력비\n(EMS)', value: M.bridge.energy, kind: 'delta' },
     { label: '로봇 설계\n이익', value: n.pnl.profit * M.Y, kind: 'total', accent: true },
   ];
   const torRows = M.stress.map(s => ({ label: s.label, value: (isFinite(s.pb) ? s.pb : M.pb0 + 60) - M.pb0, note: `${fmt.mo(s.pb)}` }))
@@ -708,7 +714,7 @@ function robotResults() {
   if (robots.some(r => r.s.auto === 'industrial')) prob.push(['shield', '<b>산업용 로봇 안전펜스</b> — 펜스·인터록 설치 면적이 필요하고 라인 레이아웃 변경이 수반됩니다']);
 
   return `
-    <div class="callout"><div class="label" style="margin-bottom:4px">결론 · 시뮬레이션 ${fmt.n(M.res._meta.sims)}회</div><h2>${verdict}</h2>
+    <div class="callout"><div class="label" style="margin-bottom:4px;display:flex;gap:8px;align-items:center">결론 · 시뮬레이션 ${fmt.n(M.res._meta.sims)}회 ${validBadge()}</div><h2>${verdict}</h2>
       <p>${moved ? `병목은 ${esc(names[M.bnB])}에서 ${esc(names[M.bnN])}(으)로 이동합니다. ` : ''}이론상 로봇 대비 실제 로봇은 정지로 연간 ${fmt.won(Math.abs(M.bridge.stop))}원을 잃습니다. 램프업을 반영한 1년차 손실은 ${fmt.won(M.rampLoss)}원입니다.</p></div>
     <div class="kpis" style="margin-top:var(--gap)">
       ${[['연간 순효과', fmt.sgn(M.g0, fmt.won), '원', '표준 대비', M.g0 > 0 ? 'pos' : 'neg'],
@@ -983,7 +989,7 @@ const COND_GROUPS = [
     ['sim.reps', '기본 반복 횟수', '회', 1], ['sim.seed', '난수 시드', '', 1], ['shiftHours', '교대 시간', 'h', 0.5], ['demand', '수요', '개/교대', 1], ['econ.shiftsPerYear', '연간 교대 수', '교대', 1], ['budget', '투자 예산', '원', 1e7]]],
   ['경제성', '연간 효과와 회수기간 계산에 쓰입니다. 회사 재무자료·견적서 값으로 바꾸세요.', [
     ['econ.margin', '공헌이익', '원/개', 100], ['econ.labor', '인건비', '원/인·h', 1000], ['econ.claim', '불량 유출 클레임', '원/건', 10000], ['econ.scrap', '폐기 손실', '원/개', 1000],
-    ['econ.shortage', '미납 페널티', '원/개', 1000], ['econ.iotBase', 'IoT 구축비', '원', 1e6], ['econ.iotPerMachine', 'IoT 설비당', '원', 1e5], ['econ.iotPredict', 'IoT 사전감지율', '0~1', 0.05], ['econ.iotRepair', 'IoT 정비 시 수리시간 비율', '0~1', 0.05]]],
+    ['econ.shortage', '미납 페널티', '원/개', 1000], ['econ.iotBase', 'IoT 구축비', '원', 1e6], ['econ.iotPerMachine', 'IoT 설비당', '원', 1e5], ['econ.iotPredict', 'IoT 사전감지율', '0~1', 0.05], ['econ.iotRepair', 'IoT 정비 시 수리시간 비율', '0~1', 0.05], ['econ.energyPrice', '전력 단가 (EMS)', '원/kWh', 5]]],
   ['로봇 리스크 가정', '로봇 영향 분석의 기준 조건입니다. 토네이도 차트는 이 값을 기준으로 스트레스를 줍니다.', [
     ['risk.changeovers', '품종 교체', '회/교대', 1], ['risk.rampWeeks', '램프업 기간', '주', 1], ['risk.rampStart', '램프업 초기 효율', '0~1', 0.05], ['risk.capexMult', 'SI·설치비 배수', '×', 0.05],
     ['risk.microMult', '순간정지 빈도 배수', '×', 0.1], ['risk.mttrMult', '수리시간 배수', '×', 0.1], ['risk.speedMult', '로봇 사이클 배수', '×', 0.05], ['risk.mtbfMult', '로봇 고장 간격 배수', '×', 0.1], ['risk.setupMult', '로봇 셋업시간 배수', '×', 0.1]]],
@@ -1144,6 +1150,230 @@ $('#formIn').onchange = async e => {
   loadForm(await TPL.readFileText(f), f.name);
 };
 
+/* ============================== MODEL VALIDATION ============================== */
+const VKEY = 'takt.validation.v1';
+const loadValid = () => { try { return JSON.parse(localStorage.getItem(VKEY)); } catch { return null; } };
+const saveValid = v => { try { localStorage.setItem(VKEY, JSON.stringify(v)); } catch {} };
+function validBadge() {
+  const v = loadValid(); if (!v?.results?.length) return '<span class="tag">모델 미검증</span>';
+  const ok = v.results.every(r => r.pass) && v.results.length === V.TESTS.length;
+  return `<span class="tag ${ok ? 'pos' : 'neg'}" title="모델 검증 화면에서 확인">${ok ? `모델 검증 ${v.results.length}/${v.results.length} 통과` : '모델 검증 일부 실패'} · ${esc(v.date.slice(0, 10))}</span>`;
+}
+function vfmt(r, v) { if (r.unit === '%') return v.toFixed(3) + '%'; if (r.unit === '배') return '×' + v.toFixed(2); if (r.unit === '분산' || r.unit === '차이') return fmt.n(v, 1); return fmt.n(v, 1) + r.unit; }
+
+function renderValid() {
+  const VR = loadValid(), C = S.C;
+  const rs = VR?.results || [], passN = rs.filter(r => r.pass).length;
+  const conv = rs.find(r => r.id === 'T8')?.curve;
+  $('#v-valid').innerHTML = `<div class="page">
+    <div class="page-head"><div><div class="label">신뢰성</div><h1>모델 검증</h1>
+      <p>시뮬레이터가 맞는 답을 내는지 두 단계로 확인합니다. <b>이론 검증</b>은 정답이 알려진 문제(대기행렬·신뢰성·품질 이론)에서 오차를 재고, <b>현장 검증</b>은 실제 기업의 생산 실적과 비교합니다.</p></div>
+      <div class="actions">${rs.length ? `<button class="btn" id="vCsv">${ic('download')}검증 리포트 CSV</button>` : ''}<button class="btn primary" id="vRun">${ic('play')}전체 검증 실행 · 9개 항목</button></div></div>
+
+    <div class="callout">
+      <div class="label">${VR ? `마지막 검증 · ${esc(VR.date)} · 기준 케이스 ${esc(VR.caseName)}` : '아직 검증하지 않았습니다'}</div>
+      <h2>${rs.length ? (passN === rs.length ? `검증 ${rs.length}개 항목 모두 통과 — 이론값 대비 최대 오차 ${fmt.pct(Math.max(...rs.filter(r => r.group === '이론 검증').map(r => r.err)), 2)}` : `${rs.length}개 중 ${passN}개 통과 — 실패 항목을 확인하세요`) : '검증을 실행하면 9개 항목의 통과 여부가 여기에 표시됩니다'}</h2>
+      <p>이론 검증으로 "코드가 의도대로 계산하는가(Verification)"를, 현장 검증으로 "모델이 실제 라인을 대표하는가(Validation)"를 확인합니다. 두 단계를 모두 거친 모델의 결론만 의사결정에 쓰는 것이 시뮬레이션 실무의 표준입니다.</p>
+    </div>
+
+    <div class="panel"><div class="panel-h"><h3>이론 검증 · 구현 검증 · 통계 검증</h3><span class="sub">허용 오차 안이면 통과</span></div>
+      <div class="tbl-wrap"><table class="t"><thead><tr><th>ID</th><th style="text-align:left">테스트</th><th style="text-align:left">이론 / 기준</th><th>기대값</th><th>시뮬레이션</th><th>오차</th><th>허용</th><th>결과</th></tr></thead><tbody>
+      ${V.TESTS.map(t => { const r = rs.find(x => x.id === t.id); return `<tr>
+        <td>${t.id}</td>
+        <td class="txt l"><b>${esc(t.name)}</b><div class="tx3" style="font-size:12.5px">${esc(t.group)} · ${esc(t.what)}</div></td>
+        <td class="txt tx2 l" style="max-width:340px">${esc(t.theory)}${r?.note ? `<div class="tx3" style="font-size:12.5px;margin-top:2px">${esc(r.note)}</div>` : ''}</td>
+        <td>${r ? (r.exact ? '—' : vfmt(r, r.expected)) : '—'}</td>
+        <td>${r ? (r.exact ? '—' : vfmt(r, r.sim) + (r.ci ? ` <span class="tx3">±${fmt.n(r.ci, 1)}</span>` : '')) : '—'}</td>
+        <td>${r ? (r.exact ? '—' : fmt.pct(r.err, 2)) : '—'}</td>
+        <td class="tx3">${t.tol ? '±' + fmt.pct(t.tol, 0) : '정확히'}</td>
+        <td>${r ? `<span class="tag ${r.pass ? 'pos' : 'neg'}">${r.pass ? '통과' : '실패'}</span>` : '<span class="tag">대기</span>'}</td></tr>`; }).join('')}
+      </tbody></table></div></div>
+
+    <div class="grid2">
+      <div class="panel"><div class="panel-h"><h3>반복 횟수와 신뢰구간</h3><span class="sub">몇 번 돌려야 믿을 수 있나</span></div><div class="panel-b">
+        ${conv ? `<p class="chart-sub">반복을 4배 늘리면 신뢰구간 폭이 절반이 됩니다. 이 케이스는 ±${fmt.n(conv[2][1], 1)}개 정밀도에 100회, ±${fmt.n(conv[4][1], 1)}개에 400회가 필요합니다.</p>
+          ${CH.lineChart({ W: chartW(.5, false), H: 230, xmin: 0, ymin: 0, series: [
+            { label: '이론 1/√n', color: 'var(--c-base)', dash: true, pts: [25, 50, 100, 200, 400].map(n => [n, conv[0][1] * Math.sqrt(25 / n)]) },
+            { label: '시뮬레이션', color: 'var(--accent)', dots: true, pts: conv }], xfmt: v => v + '회', yfmt: v => '±' + fmt.n(v, 1) })}`
+          : '<div class="tx3">검증을 실행하면 표시됩니다.</div>'}</div></div>
+      <div class="panel"><div class="panel-h"><h3>현장 검증 · 실제 실적과 비교</h3><span class="sub">${C ? esc(C.company + ' ' + C.title) + ' · 표준 라인' : '케이스를 열면 사용할 수 있습니다'}</span></div><div class="panel-b">
+        ${C ? `<p class="chart-sub">MES·생산일보에서 실제 교대당 실적을 입력하세요. 오차 10% 이내면 모델을 의사결정에 써도 됩니다.</p>
+          <div class="form" style="grid-template-columns:repeat(3,1fr)">
+            <div class="field"><label>실제 양품 (개/교대)</label><input type="number" id="haGood" value="${C.actual?.good ?? ''}" placeholder="예: 352"></div>
+            <div class="field"><label>실제 리드타임 (분)</label><input type="number" id="haLt" value="${C.actual?.lt ?? ''}" placeholder="선택"></div>
+            <div class="field"><label>병목 가동률 (%)</label><input type="number" id="haUtil" value="${C.actual?.util ?? ''}" placeholder="선택"></div>
+          </div>
+          <div class="actions" style="margin-top:14px"><button class="btn primary" id="haRun">${ic('play')}현장 데이터와 비교</button></div>
+          <div id="haOut" style="margin-top:14px">${S.hist ? histTable() : ''}</div>` : `<button class="btn" data-go="cases">${ic('folder')}케이스 열기</button>`}
+      </div></div>
+    </div>
+
+    <div class="panel"><div class="panel-h"><h3>검증 방법론</h3><span class="sub">면접·보고서에서 이렇게 설명하세요</span></div><div class="tbl-wrap"><table class="t">
+      <thead><tr><th style="text-align:left">단계</th><th style="text-align:left">질문</th><th style="text-align:left">Takt에서 하는 일</th></tr></thead><tbody>
+      ${[['Verification (구현 검증)', '코드가 설계대로 계산하는가?', '대기행렬·신뢰성·품질 이론의 정답과 비교 (T1–T6), 시드 재현성 (T7)'],
+         ['Statistical validity (통계 검증)', '결과가 우연이 아닌가?', '반복 수에 따른 신뢰구간 수렴 (T8), 공통 난수로 비교 오차 축소 (T9), 모든 결과에 95% CI 표시'],
+         ['Operational validation (현장 검증)', '모델이 실제 라인을 대표하는가?', '실제 실적(양품·리드타임·가동률)과 표준 라인 시뮬레이션 비교, 오차 10% 기준'],
+         ['Data validity (데이터 검증)', '입력값이 믿을 만한가?', 'MES 로그에서 사이클·변동계수·MTBF·MTTR을 직접 추정 (OEE·라인 지표 화면)']]
+        .map(r => `<tr><td class="txt"><b>${r[0]}</b></td><td class="txt">${r[1]}</td><td class="txt tx2">${r[2]}</td></tr>`).join('')}
+      </tbody></table></div></div>
+  </div>`;
+  $$('[data-go]', $('#v-valid')).forEach(b => b.onclick = () => setView(b.dataset.go));
+  $('#vRun').onclick = async () => {
+    const base = S.C || PRESETS[0];
+    const results = await V.runSuite((pts, reps, label, seed0, cd) => run(pts, reps, '검증 ' + label, seed0, cd), base, part => {
+      saveValid({ date: new Date().toISOString().slice(0, 16).replace('T', ' '), caseName: base.company + ' ' + base.title, results: part }); renderValid();
+    });
+    if (!results) toast('검증이 중단되었습니다');
+  };
+  const csvB = $('#vCsv'); if (csvB) csvB.onclick = () => download('takt-model-validation.csv', TPL.toCSV([
+    ['Takt 모델 검증 리포트', VR.date, VR.caseName], [],
+    ['ID', '구분', '테스트', '이론', '기대값', '시뮬레이션', '95% CI', '오차', '허용', '결과', '비고'],
+    ...rs.map(r => [r.id, r.group, r.name, r.theory, r.exact ? '' : r.expected, r.exact ? '' : r.sim, r.ci ?? '', r.exact ? '' : r.err, r.tol, r.pass ? '통과' : '실패', r.note || ''])]), 'text/csv');
+  const hb = $('#haRun'); if (hb) hb.onclick = async () => {
+    const num = id => { const v = parseFloat($(id).value); return isFinite(v) ? v : null; };
+    const a = { good: num('#haGood'), lt: num('#haLt'), util: num('#haUtil') };
+    if (a.good == null && a.lt == null && a.util == null) { toast('실제 값을 하나 이상 입력하세요'); return; }
+    S.C.actual = a; persist();
+    const res = await run([{ key: 'base', levers: baseLevers(S.C), risk: S.risk }], S.C.sim?.reps || 300, '현장 검증');
+    if (res) { S.hist = { a, r: res.base }; renderValid(); }
+  };
+}
+function histTable() {
+  const { a, r } = S.hist, bi = E.bottleneck(r.st), util = (r.st[bi][0]) * 100;
+  const rows = [['양품 (개/교대)', a.good, r.good.mean, 0.10], ['리드타임 (분)', a.lt, r.lt.mean, 0.15], [`병목 가동률 (%) · ${S.C.stations[bi].name}`, a.util, util, 0.10]].filter(x => x[1] != null);
+  return `<table class="t"><thead><tr><th>지표</th><th>실제</th><th>시뮬레이션</th><th>오차</th><th>판정</th></tr></thead><tbody>
+    ${rows.map(([l, act, sim, tol]) => { const e = Math.abs(sim - act) / Math.abs(act || 1); const ok = e <= tol, warn = e <= tol * 2;
+      return `<tr><td class="txt">${esc(l)}</td><td>${fmt.n(act, 1)}</td><td>${fmt.n(sim, 1)}</td><td>${fmt.pct(e, 1)}</td><td><span class="tag ${ok ? 'pos' : warn ? '' : 'neg'}">${ok ? '통과' : warn ? '주의' : '재보정 필요'}</span></td></tr>`; }).join('')}
+    </tbody></table>
+    <p class="tx3" style="font-size:13px;margin:10px 0 0">재보정: 오차가 크면 병목 공정의 사이클·변동계수·MTBF/MTTR을 MES 실측값으로 바꾸세요 (OEE·라인 지표 › MES 데이터).</p>`;
+}
+
+/* ============================== OEE · LINE METRICS · EMS · MES ============================== */
+const LOSS = [['oee', '가치 생산 (OEE)', 'var(--st-busy)'], ['fail', '고장', 'var(--st-down)'], ['setup', '셋업·교체', 'var(--st-minor)'], ['micro', '순간정지', 'var(--warn)'],
+  ['speed', '속도 저하', '#C9A227'], ['defect', '불량', '#F7A8AE'], ['flow', '흐름 대기 (막힘·결품)', 'var(--st-idle)']];
+function renderOps() {
+  const C = S.C, O = S.ops && JSON.stringify(S.ops.levers) === JSON.stringify(S.levers) ? S.ops : null;
+  $('#v-ops').innerHTML = `<div class="page">
+    <div class="page-head"><div><div class="label">${esc(C.company)} · ${esc(C.title)}</div><h1>OEE · 라인 지표</h1>
+      <p>제조 현장이 실제로 쓰는 지표로 표준과 현재 설계를 비교합니다: <b>OEE</b>(설비종합효율, TPM), <b>라인 밸런스</b>(Yamazumi·LBR), <b>VSM 부가가치 비율</b>, <b>EMS 에너지 원단위</b>. 입력값은 <b>MES 로그</b>로 보정할 수 있습니다.</p></div>
+      <div class="actions"><button class="btn primary" id="opRun">${ic('play')}지표 계산 · 표준·설계 각 ${fmt.n(S.C.sim?.reps || 300)}회</button></div></div>
+    ${O ? opsResults(O) : `<div class="empty">${ic('gauge')}<div style="margin-top:10px">지표 계산을 누르면 표준 라인과 현재 설계(${esc(describe(S.levers))})의 OEE, 6대 로스, 라인 밸런스, 에너지 원단위를 계산합니다.</div></div>`}
+    ${mesPanel()}
+  </div>`;
+  $('#opRun').onclick = async () => {
+    const lv = clone(S.levers);
+    const res = await run([{ key: 'base', levers: baseLevers(C), risk: S.risk }, { key: 'nom', levers: lv, risk: S.risk }], C.sim?.reps || 300, 'OEE·라인 지표');
+    if (res) { S.ops = { res, levers: lv }; renderOps(); }
+  };
+  bindMes();
+}
+function opsResults(O) {
+  const C = S.C, cb = cfgOf(baseLevers(C)), cn = cfgOf(O.levers), b = E.lineMetrics(cb, O.res.base), n = E.lineMetrics(cn, O.res.nom);
+  const Y = yr(C), price = ({ ...E.DEFAULT_ECON, ...C.econ }).energyPrice;
+  const kpi = (k, v0, v1, f, good, sub) => { const d = v1 - v0, better = good > 0 ? d > 0 : d < 0;
+    return `<div class="kpi"><div class="label">${k}</div><div class="v">${f(v1)}</div><div class="d"><span class="${Math.abs(d) < 1e-9 ? '' : better ? 'pos' : 'neg'}">${d >= 0 ? '▲' : '▼'} ${f(Math.abs(d)).replace('−', '')}</span> · 표준 ${f(v0)}${sub ? ' · ' + sub : ''}</div></div>`; };
+  const same = describe(O.levers) === '표준 (변경 없음)';
+  return `
+    <div class="kpis">
+      ${kpi('라인 OEE', b.lineOEE, n.lineOEE, v => fmt.pct(v, 1), 1)}
+      ${kpi('라인 밸런스율 LBR', b.lbr, n.lbr, v => fmt.pct(v, 1), 1)}
+      ${kpi('병목 CT', b.maxCt, n.maxCt, v => fmt.n(v, 1) + 's', -1, `Takt ${fmt.n(n.takt, 1)}s`)}
+      ${kpi('부가가치 비율 (VSM)', b.vaRatio, n.vaRatio, v => fmt.pct(v, 1), 1)}
+      ${kpi('에너지 원단위 (EMS)', b.kwhPerUnit, n.kwhPerUnit, v => fmt.n(v, 3) + 'kWh', -1, '개당')}
+      ${kpi('연간 전력비', b.kwh * price * Y, n.kwh * price * Y, v => fmt.won(v), -1)}
+    </div>
+    ${same ? `<div class="callout warn-box"><p>현재 설계가 표준과 같습니다. 라인 모델이나 로봇 영향 분석에서 설계를 바꾸면 차이가 보입니다.</p></div>` : ''}
+    <div class="grid75">
+      <div class="panel"><div class="panel-h"><h3>Yamazumi · 공정별 CT vs Takt</h3><span class="sub">빨간 막대 = Takt 초과 (수요를 못 맞추는 공정)</span></div><div class="panel-b">
+        <p class="chart-sub">라인 밸런스율 ${fmt.pct(n.lbr, 0)} — ${n.lbr >= 0.85 ? '공정 간 작업량이 고르게 분배되어 있습니다' : '공정 간 작업량 편차가 커서 유휴 인력·설비가 생깁니다. 작업 재분배(라인 밸런싱)를 검토하세요'}.</p>
+        ${CH.yamazumi({ W: chartW(f75(7), false), H: 290, takt: n.takt, groups: [{ label: '표준', color: 'var(--c-base)' }, { label: '설계', color: 'var(--accent)' }],
+          rows: n.stations.map((s, i) => ({ label: s.name, values: [b.stations[i].ct, s.ct] })), fmt: v => fmt.n(v, 0) })}
+        <div class="legend"><span><i class="dot" style="background:var(--c-base);opacity:.5"></i>표준</span><span><i class="dot" style="background:var(--accent)"></i>현재 설계</span><span><i class="dot" style="background:var(--neg)"></i>Takt 초과</span></div></div></div>
+      <div class="panel"><div class="panel-h"><h3>지표 해설</h3></div><div class="panel-b"><ul class="notes">
+        <li>${ic('gauge')}<span><b>OEE = 가용률 × 성능 × 품질</b>. 세계적 수준은 85% 전후로 알려져 있습니다. 공정 OEE는 고장·셋업(가용률), 순간정지·대기(성능), 불량(품질) 손실을 한 숫자로 보여줍니다.</span></li>
+        <li>${ic('line')}<span><b>LBR = Σ CT ÷ (공정 수 × 최대 CT)</b>. 100%면 모든 공정이 같은 속도입니다.</span></li>
+        <li>${ic('clock')}<span><b>부가가치 비율 = 총 가공시간 ÷ 리드타임</b> (VSM). 나머지는 기다리는 시간입니다.</span></li>
+        <li>${ic('up')}<span><b>에너지 원단위 = kWh ÷ 생산량</b> (EMS). 대기 중에도 소비하는 전력이 원단위를 키웁니다. 전력 단가 ${fmt.n(price)}원/kWh는 조건 화면에서 바꿀 수 있습니다.</span></li>
+      </ul></div></div>
+    </div>
+    <div class="panel"><div class="panel-h"><h3>공정별 OEE · TPM 손실</h3><span class="sub">현재 설계 기준 · ${O.res.nom.reps}회 평균</span></div>
+      <div class="tbl-wrap"><table class="t"><thead><tr><th>공정</th><th>표준 OEE</th><th>설계 OEE</th><th>가용률 A</th><th>성능 P</th><th>품질 Q</th><th style="text-align:left;min-width:320px">시간 구성 (설계)</th><th>kWh/교대</th></tr></thead><tbody>
+      ${n.stations.map((s, i) => { const parts = [['oee', s.oee], ...Object.entries(s.loss)]; const big = Object.entries(s.loss).sort((x, y) => y[1] - x[1])[0];
+        return `<tr><td class="txt"><b>${esc(s.name)}</b></td><td>${fmt.pct(b.stations[i].oee, 1)}</td><td class="${s.oee > b.stations[i].oee + 0.005 ? 'pos' : s.oee < b.stations[i].oee - 0.005 ? 'neg' : ''}">${fmt.pct(s.oee, 1)}</td>
+          <td>${fmt.pct(s.A, 1)}</td><td>${fmt.pct(s.P, 1)}</td><td>${fmt.pct(s.Q, 1)}</td>
+          <td class="txt l"><div class="bar" style="display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--hover)" title="최대 손실: ${LOSS.find(l => l[0] === big[0])[1]} ${fmt.pct(big[1])}">${LOSS.map(([k, , c]) => { const v = k === 'oee' ? s.oee : s.loss[k]; return `<i style="display:block;width:${v * 100}%;background:${c}"></i>`; }).join('')}</div>
+            <div class="tx3" style="font-size:12px;margin-top:4px">최대 손실: ${LOSS.find(l => l[0] === big[0])[1]} ${fmt.pct(big[1])}</div></td>
+          <td>${fmt.n(b.stations[i].kwh, 1)} → <b>${fmt.n(s.kwh, 1)}</b></td></tr>`; }).join('')}
+      </tbody></table></div>
+      <div class="panel-b"><div class="legend">${LOSS.map(([, l, c]) => `<span><i class="dot" style="background:${c}"></i>${l}</span>`).join('')}</div></div></div>`;
+}
+
+// ---- MES log → parameter estimation (data validity)
+function mesPanel() {
+  const M = S.mes;
+  return `<div class="panel"><div class="panel-h"><h3>MES 데이터로 입력값 보정</h3><span class="sub">MES·생산일보의 사이클 실측과 정지 기록 → 평균·변동계수·MTBF·MTTR 추정</span></div>
+    <div class="panel-b">
+      <div class="actions"><button class="btn sm" id="mesSample">${ic('download')}MES 로그 양식 (샘플 데이터)</button><button class="btn sm primary" id="mesUp">${ic('upload')}MES 로그 올리기</button>
+        <span class="tx3" style="font-size:13px">[관측] 관측기간(h) · [사이클] 공정명, 사이클(s) · [정지] 공정명, 유형(고장/셋업/순간정지), 지속(min)</span></div>
+      ${M ? `<div style="margin-top:16px">${M.errors.length ? `<ul class="notes">${M.errors.map(e => `<li>${ic('alert', 'neg')}<span>${esc(e)}</span></li>`).join('')}</ul>` : ''}
+        <div class="tbl-wrap"><table class="t"><thead><tr><th><input type="checkbox" id="mesAll" checked></th><th style="text-align:left">공정</th><th>사이클 표본</th><th>사이클 (현재 → 추정)</th><th>변동계수</th><th>고장 수</th><th>MTBF h</th><th>MTTR min</th></tr></thead><tbody>
+        ${M.est.map((e, j) => `<tr><td style="width:1%"><input type="checkbox" data-mes="${j}" checked></td><td class="txt"><b>${esc(e.name)}</b></td><td>${e.n}</td>
+          <td>${fmt.n(e.cur.cycle, 1)} → <b>${e.cycle != null ? fmt.n(e.cycle, 1) : '—'}</b></td><td>${fmt.n(e.cur.cv, 2)} → <b>${e.cv != null ? fmt.n(e.cv, 2) : '—'}</b></td>
+          <td>${e.fails}</td><td>${e.cur.mtbf ?? '—'} → <b>${e.mtbf != null ? fmt.n(e.mtbf, 2) : '—'}</b></td><td>${e.cur.mttr ?? '—'} → <b>${e.mttr != null ? fmt.n(e.mttr, 1) : '—'}</b></td></tr>`).join('')}
+        </tbody></table></div>
+        <div class="actions" style="margin-top:12px"><button class="btn primary" id="mesApply">${ic('check')}선택한 추정값을 케이스에 적용</button><span class="tx3" style="font-size:13px">적용 후 모델 검증 › 현장 검증으로 실제 실적과 다시 비교하세요.</span></div></div>` : ''}
+    </div></div>`;
+}
+function mesSampleCSV() {
+  const C = S.C, H = 40, g = () => { const u = Math.random() || 1e-9, v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  const rows = [['TAKT MES 로그 양식 v1'], ['※ 샘플 데이터입니다. 실제 MES·생산일보 기록으로 바꿔 올리세요. ※ 행은 무시됩니다.'], [], ['[관측]'], ['관측기간(h)', H], [], ['[사이클]'], ['공정명', '사이클(s)']];
+  C.stations.forEach(s => { for (let k = 0; k < 40; k++) rows.push([s.name, Math.max(s.cycle * 0.3, s.cycle * (1 + s.cv * g())).toFixed(1)]); });
+  rows.push([], ['[정지]'], ['공정명', '유형', '지속(min)']);
+  C.stations.forEach(s => { if (!s.mtbf) return; const k = Math.max(1, Math.round(H * s.n / (s.mtbf + s.mttr / 60))); for (let j = 0; j < k; j++) rows.push([s.name, '고장', (-Math.log(1 - Math.random()) * s.mttr).toFixed(1)]); });
+  return TPL.toCSV(rows);
+}
+function estimateMes(text) {
+  const C = S.C, rows = TPL.parseCSV(text), errors = [];
+  let sec = null, H = null; const cyc = {}, stops = {};
+  rows.forEach((r, li) => {
+    if (!r.length || r.every(x => !x) || /^※/.test(r[0])) return;
+    const m = r[0].match(/^\[(.+)\]$/); if (m) { sec = m[1].replace(/\s/g, ''); return; }
+    if (sec === '관측') { const v = parseFloat(r[1]); if (isFinite(v)) H = v; }
+    else if (sec === '사이클') { const v = parseFloat(r[1]); if (!isFinite(v)) return; (cyc[r[0]] = cyc[r[0]] || []).push(v); }
+    else if (sec === '정지') { const v = parseFloat(r[2]); if (!isFinite(v)) return; if (!/고장|fail/i.test(r[1])) return; (stops[r[0]] = stops[r[0]] || []).push(v); }
+  });
+  if (!H) errors.push('[관측] 관측기간(h)이 없어 MTBF를 계산할 수 없습니다');
+  [...Object.keys(cyc), ...Object.keys(stops)].forEach(nm => { if (!C.stations.some(s => s.name === nm)) errors.push(`공정 '${nm}'이 케이스에 없습니다 (공정명을 맞춰 주세요)`); });
+  const est = C.stations.map((s, i) => {
+    const xs = cyc[s.name] || [], st = xs.length >= 2 ? E.stats(xs) : null, fs = stops[s.name] || [];
+    const down = fs.reduce((a, b) => a + b, 0);
+    if (xs.length && xs.length < 20) errors.push(`'${s.name}' 사이클 표본이 ${xs.length}개뿐입니다 (시간 연구는 30개 이상 권장)`);
+    return { i, name: s.name, n: xs.length, cycle: st ? st.mean : null, cv: st ? st.sd / st.mean : null, fails: fs.length,
+      mtbf: H && fs.length ? (H * s.n * 60 - down) / fs.length / 60 : null, mttr: fs.length ? down / fs.length : null,
+      cur: { cycle: s.cycle, cv: s.cv, mtbf: s.mtbf, mttr: s.mttr } };
+  });
+  return { est, errors };
+}
+function bindMes() {
+  $('#mesSample').onclick = () => download(`takt-MES로그-${S.C.company}.csv`.replace(/[\\/:*?"<>|\s]+/g, '_'), mesSampleCSV(), 'text/csv');
+  $('#mesUp').onclick = () => $('#mesIn').click();
+  const all = $('#mesAll'); if (all) all.onchange = () => $$('[data-mes]').forEach(c => c.checked = all.checked);
+  const ap = $('#mesApply'); if (ap) ap.onclick = () => {
+    let k = 0;
+    $$('[data-mes]').filter(c => c.checked).forEach(c => {
+      const e = S.mes.est[+c.dataset.mes], s = S.C.stations[e.i];
+      if (e.cycle != null) { s.cycle = +e.cycle.toFixed(2); s.cv = +e.cv.toFixed(3); k++; }
+      if (e.mtbf != null && e.mtbf > 0) { s.mtbf = +e.mtbf.toFixed(2); s.mttr = +e.mttr.toFixed(1); }
+    });
+    S.mes = null; S.ops = null; S.robot = null; S.mc = null; S.hist = null; persist(); resetLive(); renderOps();
+    toast(`${k}개 공정에 MES 추정값을 적용했습니다. 영구 저장은 시뮬레이션 조건 › 저장`);
+  };
+}
+$('#mesIn').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return; e.target.value = '';
+  S.mes = estimateMes(await TPL.readFileText(f)); renderOps();
+};
+
 /* ============================== boot ============================== */
 (function boot() {
   let theme = 'light'; try { theme = localStorage.getItem('takt.theme.v2') || 'light'; } catch {}
@@ -1152,7 +1382,7 @@ $('#formIn').onchange = async e => {
   if (sess?.risk) S.risk = { ...E.DEFAULT_RISK, ...sess.risk };
   if (sess?.caseId) openCase(sess.caseId, sess.levers, sess.draft);
   const want = location.hash.slice(1);
-  setView(want === 'free' ? 'free' : S.C && ['line', 'robot', 'exp', 'report', 'cond'].includes(want) ? want : 'cases');
+  setView(['free', 'valid'].includes(want) ? want : S.C && ['line', 'robot', 'exp', 'report', 'cond', 'ops'].includes(want) ? want : 'cases');
   let rz = 0;
   addEventListener('resize', () => {
     if (S.view === 'line') drawLive(true);

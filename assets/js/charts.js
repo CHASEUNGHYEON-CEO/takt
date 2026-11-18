@@ -146,6 +146,29 @@ export function scatter({ pts, frontier = [], W = 640, H = 300, xfmt = v => v, y
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">${g}</svg>`;
 }
 
+/** Yamazumi (line-balance) chart: grouped bars of effective cycle time per station vs takt. groups: [{label,color}], rows: [{label, values:[...]}] */
+export function yamazumi({ rows, groups, takt, W = 640, H = 280, fmt = v => v }) {
+  const pad = { l: 44, r: 16, t: 20, b: 40 };
+  const ymax = Math.max(takt * 1.15, ...rows.flatMap(r => r.values));
+  const yt = niceTicks(0, ymax, 4), y1 = yt[yt.length - 1];
+  const Y = v => H - pad.b - (H - pad.t - pad.b) * v / y1;
+  const cw = (W - pad.l - pad.r) / rows.length, bw = Math.min(34, cw * 0.7 / groups.length);
+  let g = '';
+  yt.forEach(v => { g += `<line class="gl" x1="${pad.l}" x2="${W - pad.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${pad.l - 6}" y="${Y(v) + 4}" text-anchor="end">${fmt(v)}</text>`; });
+  rows.forEach((r, i) => {
+    const cx = pad.l + cw * i + cw / 2, x0 = cx - bw * groups.length / 2;
+    r.values.forEach((v, j) => {
+      const over = v > takt;
+      g += `<rect x="${x0 + j * bw + 2}" y="${Y(v)}" width="${bw - 4}" height="${Y(0) - Y(v)}" rx="3" fill="${over ? 'var(--neg)' : groups[j].color}" ${j === 0 ? 'fill-opacity=".45"' : ''}/>`;
+      g += `<text x="${x0 + j * bw + bw / 2}" y="${Y(v) - 5}" text-anchor="middle" class="${j === groups.length - 1 ? 'strong' : ''}">${fmt(v)}</text>`;
+    });
+    g += `<text class="lbl" x="${cx}" y="${H - pad.b + 18}" text-anchor="middle">${esc(r.label)}</text>`;
+  });
+  g += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${Y(takt)}" y2="${Y(takt)}" stroke="var(--neg)" stroke-dasharray="6 4" stroke-width="1.5"/>`;
+  g += `<text x="${W - pad.r}" y="${Y(takt) - 6}" text-anchor="end" class="strong" style="fill:var(--neg)">Takt ${fmt(takt)}</text>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+}
+
 /** Pareto frontier (min x, max y) */
 export function frontierOf(points) {
   const s = [...points].sort((a, b) => a.x - b.x || b.y - a.y); const f = []; let best = -Infinity;
