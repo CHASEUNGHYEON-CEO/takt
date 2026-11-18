@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Takt — Operations Simulation Lab</title>
+<meta name="description" content="로봇·IoT·AI 투자를 하기 전에, 실제 라인을 모델링하고 수천 번 시뮬레이션해 표준 대비 이점과 리스크를 수치로 설명하는 운영 의사결정 도구.">
+<link rel="icon" href="assets/img/mark.svg">
+<link rel="stylesheet" href="assets/css/takt.css">
+<style>
+  body { font-size: 16px; background: var(--s1); }
+  .label { font-size: 15px; color: var(--accent); font-weight: 700; }
+  .shot, .two, .bridge { border-radius: 20px; overflow: hidden; }
+  .shot { border: 0 !important; background: var(--bg) !important; padding: 24px 24px 0; }
+  .shot img { border-radius: 12px 12px 0 0; }
+  .two { border: 0 !important; background: var(--bg); }
+  .two > div + div { border-left: 0 !important; }
+  .two > div { background: var(--s1); margin: 8px; border-radius: 14px; }
+  .bridge { border: 0 !important; background: var(--bg) !important; }
+  .facts b { font-family: inherit !important; font-weight: 800 !important; font-size: 30px !important; }
+  .steps .n { font-family: inherit !important; font-weight: 800; font-size: 15px !important; }
+  .assume dt { font-family: inherit !important; text-transform: none !important; font-size: 14px !important; font-weight: 700; color: var(--tx) !important; }
+  .btn.lg { border-radius: 12px; }
+  /* PC widths: 1200 content (1280–1919), 1360 content (≥1920). Page never narrower than 1100. */
+  body { min-width: 1100px; }
+  .wrap { max-width: calc(var(--land-max, 1200px) + 2 * var(--page-x)); margin: 0 auto; padding: 0 var(--page-x); }
+  @media (min-width: 1920px) { :root { --land-max: 1360px; } body { font-size: 17px; } }
+  .lnav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .lnav .wrap { display: flex; align-items: center; gap: 28px; height: 56px; }
+  .lnav a.l { color: var(--tx2); text-decoration: none; font-size: 13.5px; }
+  .lnav a.l:hover { color: var(--tx); }
+  .lnav .sp { flex: 1; }
+  .hero { padding: 96px 0 48px; display: grid; grid-template-columns: 7fr 5fr; gap: 48px; align-items: end; }
+  .hero h1 { font-size: clamp(40px, 6vw, 68px); line-height: 1.04; letter-spacing: -.035em; margin: 14px 0 0; font-weight: 750; }
+  .hero h1 .dim { color: var(--tx3); }
+  .hero h1 em { font-style: normal; }
+  .hero p.lead { font-size: 17px; color: var(--tx2); max-width: 520px; margin: 0 0 24px; line-height: 1.65; }
+  .btn.lg { height: 40px; padding: 0 18px; font-size: 14px; }
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-top: 8px; }
+  .facts div { padding: 18px 20px 18px 0; }
+  .facts div + div { padding-left: 20px; border-left: 1px solid var(--line); }
+  .facts b { display: block; font-family: "JetBrains Mono", monospace; font-size: 24px; font-weight: 500; letter-spacing: -.02em; }
+  .facts span { color: var(--tx2); font-size: 13px; }
+  .shot { margin: 40px 0 0; border: 1px solid var(--line-strong); background: var(--s1); }
+  .shot img { display: block; width: 100%; height: auto; }
+  .shot figcaption { display: flex; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--tx3); font-family: "JetBrains Mono", monospace; }
+  section.blk { padding: 96px 0 0; }
+  .blk h2 { font-size: clamp(28px, 3.6vw, 40px); letter-spacing: -.025em; line-height: 1.15; margin: 10px 0 14px; font-weight: 700; }
+  .blk p.sub { color: var(--tx2); max-width: 640px; margin: 0; line-height: 1.7; }
+  .steps { margin-top: 36px; border-top: 1px solid var(--line-strong); }
+  .steps .row { display: grid; grid-template-columns: 80px 240px 1fr; gap: 24px; padding: 22px 0; border-bottom: 1px solid var(--line); }
+  .steps .n { font-family: "JetBrains Mono", monospace; color: var(--accent); font-size: 13px; padding-top: 3px; }
+  .steps h3 { margin: 0; font-size: 18px; letter-spacing: -.01em; }
+  .steps p { margin: 0; color: var(--tx2); line-height: 1.7; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-top: 36px; border: 1px solid var(--line); }
+  .two > div { padding: 24px 28px; }
+  .two > div + div { border-left: 1px solid var(--line); }
+  .two ul { list-style: none; padding: 0; margin: 14px 0 0; }
+  .two li { display: grid; grid-template-columns: 18px 1fr; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); color: var(--tx2); line-height: 1.6; font-size: 14px; }
+  .two li b { color: var(--tx); font-weight: 600; }
+  .bridge { margin-top: 20px; border: 1px solid var(--line); padding: 20px 24px; background: var(--s1); }
+  .exp { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 36px; border-top: 1px solid var(--line-strong); }
+  .exp > div { padding: 22px 24px 0 0; }
+  .exp > div + div { padding-left: 24px; border-left: 1px solid var(--line); }
+  .exp h3 { margin: 8px 0 8px; font-size: 17px; }
+  .exp p { color: var(--tx2); margin: 0; line-height: 1.7; font-size: 14px; }
+  .assume { margin-top: 32px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 40px; }
+  .assume div { display: grid; grid-template-columns: 160px 1fr; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .assume dt { color: var(--tx3); font-family: "JetBrains Mono", monospace; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; padding-top: 2px; }
+  .assume dd { margin: 0; color: var(--tx2); }
+  .cta { margin: 112px 0 0; padding: 56px 0; border-top: 1px solid var(--line-strong); display: flex; justify-content: space-between; align-items: end; gap: 24px; flex-wrap: wrap; }
+  .cta h2 { font-size: clamp(30px, 4vw, 48px); letter-spacing: -.03em; margin: 0; line-height: 1.1; }
+  footer { border-top: 1px solid var(--line); padding: 22px 0 40px; color: var(--tx3); font-size: 12.5px; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<nav class="lnav"><div class="wrap">
+  <a class="brand" href="index.html" style="width:auto"><img class="brand-mark" src="assets/img/mark.svg" alt="">TAKT</a>
+  <a class="l" href="#method">방법</a><a class="l" href="#robot">로봇 영향 분석</a><a class="l" href="#experiments">실험</a><a class="l" href="#assumptions">가정</a>
+  <span class="sp"></span>
+  <a class="btn primary" href="app.html">워크스페이스 열기</a>
+</div></nav>
+
+<main class="wrap">
+  <header class="hero">
+    <div>
+      <div class="label">운영 시뮬레이션 랩</div>
+      <h1><span class="dim">투자하기 전에,</span><br>시뮬레이션하라.</h1>
+    </div>
+    <div>
+      <p class="lead">실제 기업의 생산 라인을 모델링하고, 로봇·IoT·AI 투자안을 수천 번 반복 실험합니다. 현재 운영을 <b style="color:var(--tx)">표준</b>으로 고정하고, 무엇이 얼마나 좋아지고 무엇이 문제가 되는지 숫자로 설명합니다.</p>
+      <div class="actions"><a class="btn primary lg" href="app.html">워크스페이스 열기</a><a class="btn lg" href="#method">작동 방식</a></div>
+    </div>
+  </header>
+
+  <div class="facts">
+    <div><b>11 × N</b><span>로봇 분석 1회당 조건 수 × 반복</span></div>
+    <div><b>CRN</b><span>공통 난수로 시나리오 간 공정 비교</span></div>
+    <div><b>8</b><span>로봇 리스크 스트레스 요인</span></div>
+    <div><b>0 설치</b><span>브라우저 병렬 워커로 실행</span></div>
+  </div>
+
+  <figure class="shot">
+    <img src="mockups/mockup-v2-robot.png" alt="Takt 로봇 투자 분석 화면 시안: 결론 문장, KPI 카드, 가치 브리지, 리스크 차트">
+    <figcaption><span>로봇 영향 분석</span><span>디자인 시안</span></figcaption>
+  </figure>
+
+  <section class="blk" id="method">
+    <div class="label">작동 방식</div>
+    <h2>컨설턴트가 일하는 순서 그대로.</h2>
+    <p class="sub">문제 정의부터 권고까지, 모든 결론은 표준(현재 운영) 대비 차이로 말합니다.</p>
+    <div class="steps">
+      <div class="row"><span class="n">01</span><h3>문제 정의</h3><p>회사·산업, 문제 상황, 미션, 제약, 수요와 예산. 프리셋 5개 산업 케이스로 시작하거나, 실제 기업 데이터를 직접 입력하고 엑셀 표를 그대로 붙여넣습니다.</p></div>
+      <div class="row"><span class="n">02</span><h3>표준 라인 진단</h3><p>공정별 사이클·변동·불량·고장을 반영한 1초 단위 시뮬레이션. 가공·막힘·고장·대기 시간 구성으로 병목이 어디인지 바로 보입니다.</p></div>
+      <div class="row"><span class="n">03</span><h3>설계와 실험</h3><p>대수, 버퍼, 협동로봇·산업용 로봇, 자동 로딩 셀, AI 비전검사, IoT 예지보전을 조합하고 Monte Carlo·민감도·최적화 실험을 돌립니다.</p></div>
+      <div class="row"><span class="n">04</span><h3>표준 대비 결론</h3><p>연간 순효과, 회수기간, 신뢰구간, 리스크 시나리오를 담은 1페이지 보고서로 정리합니다.</p></div>
+    </div>
+  </section>
+
+  <section class="blk" id="robot">
+    <div class="label">로봇 영향 분석</div>
+    <h2>로봇의 이점만 계산하지 않습니다.<br>문제점도 같은 단위로.</h2>
+    <p class="sub">대부분의 ROI 계산기는 공칭 성능만 가정합니다. Takt는 이론상 로봇과 실제 로봇(고장, 순간정지, 셋업, 램프업)을 따로 시뮬레이션해서, 효과가 어디서 오고 어디로 새는지 분해합니다.</p>
+    <div class="two">
+      <div><div class="label" style="color:var(--pos)">이점</div>
+        <ul>
+          <li><span class="pos">+</span><span><b>처리량</b> — 병목 공정의 사이클 단축으로 늘어나는 양품과 납기 달성률</span></li>
+          <li><span class="pos">+</span><span><b>인건비</b> — 공정별 투입 인력 변화를 교대 단위로 계산</span></li>
+          <li><span class="pos">+</span><span><b>품질</b> — 반복 정밀도로 줄어드는 불량 유출·클레임 비용</span></li>
+          <li><span class="pos">+</span><span><b>예측 가능성</b> — 산출 변동(표준편차) 감소, 리드타임 단축</span></li>
+        </ul></div>
+      <div><div class="label" style="color:var(--neg)">문제점</div>
+        <ul>
+          <li><span class="neg">−</span><span><b>정지 손실</b> — 로봇 고장과 순간정지로 사라지는 처리량</span></li>
+          <li><span class="neg">−</span><span><b>병목 이동</b> — 로봇이 병목을 풀면 드러나는 다음 제약</span></li>
+          <li><span class="neg">−</span><span><b>유연성</b> — 품종 교체가 잦을수록 긴 셋업이 효과를 잠식</span></li>
+          <li><span class="neg">−</span><span><b>도입 리스크</b> — 램프업, 정비 숙련도, SI 비용 초과, 안전 속도제한</span></li>
+        </ul></div>
+    </div>
+    <div class="bridge">
+      <div class="label" style="margin-bottom:10px">가치 브리지 · 예시 구조</div>
+      <svg class="chart" viewBox="0 0 900 150" role="img" aria-label="표준 이익에서 로봇 설계 이익으로 이어지는 가치 브리지 예시">
+        <g font-family="Pretendard Variable, sans-serif">
+          <rect x="20" y="70" width="80" height="50" fill="var(--c-base)"/><text class="lbl" x="60" y="140" text-anchor="middle">표준 이익</text>
+          <rect x="150" y="30" width="80" height="40" fill="var(--pos)"/><text class="lbl" x="190" y="140" text-anchor="middle">처리량(이론)</text>
+          <rect x="280" y="30" width="80" height="14" fill="var(--neg)"/><text class="lbl" x="320" y="140" text-anchor="middle">정지 손실</text>
+          <rect x="410" y="12" width="80" height="32" fill="var(--pos)"/><text class="lbl" x="450" y="140" text-anchor="middle">인건비 절감</text>
+          <rect x="540" y="4" width="80" height="8" fill="var(--pos)"/><text class="lbl" x="580" y="140" text-anchor="middle">품질 비용</text>
+          <rect x="670" y="4" width="80" height="12" fill="var(--neg)"/><text class="lbl" x="710" y="140" text-anchor="middle">로봇 운영비</text>
+          <rect x="800" y="16" width="80" height="104" fill="var(--accent)"/><text class="lbl" x="840" y="140" text-anchor="middle">로봇 설계 이익</text>
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <section class="blk" id="experiments">
+    <div class="label">실험</div>
+    <h2>한 번의 실행이 아니라, 분포로 판단합니다.</h2>
+    <p class="sub">모든 실험은 CPU 코어 수만큼의 Web Worker에서 병렬로 돌고, 같은 난수 시드를 공유해 시나리오 차이가 우연이 아님을 보장합니다.</p>
+    <div class="exp">
+      <div><div class="label">Monte Carlo</div><h3>시나리오 비교</h3><p>시나리오당 최대 2,000회. 평균·95% 신뢰구간·P5–P95, 목표 달성 교대 비율, 연간 효과와 회수기간. CSV로 내보내기.</p></div>
+      <div><div class="label">민감도</div><h3>민감도 분석</h3><p>공정 대수, 버퍼, 품종 교체, 순간정지, 수리시간, SI 비용을 범위로 바꿔 KPI 곡선과 신뢰구간 밴드를 그립니다.</p></div>
+      <div><div class="label">최적화</div><h3>최적 투자 탐색</h3><p>레버 조합 수천 개를 선별·재검증해 투자비 대비 연간 효과의 효율적 경계와 권고안을 찾습니다.</p></div>
+    </div>
+  </section>
+
+  <section class="blk" id="assumptions">
+    <div class="label">모델 가정</div>
+    <h2>가정은 숨기지 않습니다.</h2>
+    <dl class="assume">
+      <div><dt>Model</dt><dd>1초 이산시간 흐름라인, 유한 버퍼, 가공 후 막힘(BAS)</dd></div>
+      <div><dt>Variability</dt><dd>사이클 = 절단 정규분포(평균, CV)</dd></div>
+      <div><dt>Failures</dt><dd>가동시간 기준 지수분포 MTBF / MTTR</dd></div>
+      <div><dt>Robots</dt><dd>업체 공칭 성능 + 순간정지·셋업·램프업·정비 숙련도</dd></div>
+      <div><dt>Quality</dt><dd>공정별 불량 발생, 검사 검출률, 유출 시 클레임</dd></div>
+      <div><dt>Economics</dt><dd>공헌이익 − 미납 − 클레임 − 폐기 − 인건비 − 운영비</dd></div>
+    </dl>
+  </section>
+
+  <div class="cta">
+    <h2>당신의 라인으로<br>시작하세요.</h2>
+    <a class="btn primary lg" href="app.html">워크스페이스 열기</a>
+  </div>
+</main>
+<footer><div class="wrap"><span>TAKT · Operations Simulation Lab</span><span>교육·연구용 의사결정 도구. 프리셋 케이스는 가상 데이터입니다.</span></div></footer>
+<script>try{const t=localStorage.getItem('takt.theme.v2');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</body>
+</html>
