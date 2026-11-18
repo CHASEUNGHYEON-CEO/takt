@@ -1,7 +1,7 @@
 // Model verification & validation suite (Sargent-style V&V).
 // Each test compares the simulator against a closed-form result from queueing / reliability / quality theory,
 // or checks an internal property (determinism, convergence, variance reduction).
-import { buildConfig, createSim, summarize, stats } from './engine.js';
+import { buildConfig, createSim, summarize, stats } from './engine.js?v=202611180720';
 
 const S = (name, kind, n, cycle, cv, defect, buf, x = {}) => ({ name, kind, n, cycle, cv, defect, buf, ...x });
 const mk = (stations, h = 8, demand = 400) => ({ id: 'validation', company: '검증', title: '검증', demand, shiftHours: h, budget: 0, econ: {}, risk: { changeovers: 0 }, stations, sim: { seed: 1000 } });

@@ -1,9 +1,9 @@
-import * as E from './engine.js';
-import { evaluate, cancelAll, poolSize } from './pool.js';
-import { PRESETS, loadCustom, saveCustom, allCases, blankCase } from './cases.js';
-import * as CH from './charts.js';
-import * as TPL from './template.js';
-import * as V from './validate.js';
+import * as E from './engine.js?v=202611180720';
+import { evaluate, cancelAll, poolSize } from './pool.js?v=202611180720';
+import { PRESETS, loadCustom, saveCustom, allCases, blankCase } from './cases.js?v=202611180720';
+import * as CH from './charts.js?v=202611180720';
+import * as TPL from './template.js?v=202611180720';
+import * as V from './validate.js?v=202611180720';
 
 /* ============================== utilities ============================== */
 const $ = (s, el = document) => el.querySelector(s);
@@ -132,7 +132,8 @@ const NAV = [
 const NO_CASE_OK = ['cases', 'free', 'valid'];
 function renderNav() {
   $$('#nav a').forEach(a => {
-    const [v, icon, label] = NAV.find(n => n[0] === a.dataset.view);
+    const entry = NAV.find(n => n[0] === a.dataset.view); if (!entry) { a.hidden = true; return; }
+    const [v, icon, label] = entry;
     a.innerHTML = `${ic(icon)}<span>${label}</span>`; a.title = label;
     a.classList.toggle('on', S.view === v || (v === 'cases' && S.view === 'editor'));
     a.style.opacity = !S.C && !NO_CASE_OK.includes(v) ? .4 : 1;
