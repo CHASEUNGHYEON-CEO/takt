@@ -1,10 +1,10 @@
-import * as E from './engine.js?v=202611200058';
-import { evaluate, cancelAll, poolSize } from './pool.js?v=202611200058';
-import { PRESETS, loadCustom, saveCustom, allCases, blankCase } from './cases.js?v=202611200058';
-import * as CH from './charts.js?v=202611200058';
-import * as TPL from './template.js?v=202611200058';
-import * as V from './validate.js?v=202611200058';
-import * as SH from './share.js?v=202611200058';
+import * as E from './engine.js?v=202611200100';
+import { evaluate, cancelAll, poolSize } from './pool.js?v=202611200100';
+import { PRESETS, loadCustom, saveCustom, allCases, blankCase } from './cases.js?v=202611200100';
+import * as CH from './charts.js?v=202611200100';
+import * as TPL from './template.js?v=202611200100';
+import * as V from './validate.js?v=202611200100';
+import * as SH from './share.js?v=202611200100';
 
 /* ============================== utilities ============================== */
 const $ = (s, el = document) => el.querySelector(s);
@@ -1695,3 +1695,13 @@ async function importShare(hash) {
     clearTimeout(rz); rz = setTimeout(() => { if (['robot', 'exp', 'free'].includes(S.view)) ({ robot: renderRobot, exp: renderExp, free: renderFree })[S.view](); }, 200);
   });
 })();
+
+// A share link opened in a tab that already has Takt loaded only changes the hash — import it then too.
+addEventListener('hashchange', async () => {
+  if (!location.hash.startsWith('#s=')) return;
+  const sh = await importShare(location.hash.slice(1));
+  if (!sh) return;
+  setView(sh.view);
+  toast(`공유받은 분석을 열었습니다 · 내 케이스에 '공유받음'으로 저장됨`);
+  if (sh.run && AUTO_RUN[sh.view]) setTimeout(() => AUTO_RUN[sh.view](), 300);
+});
