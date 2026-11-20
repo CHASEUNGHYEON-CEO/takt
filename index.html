@@ -4,9 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Takt — Operations Simulation Lab</title>
-<meta name="description" content="로봇·IoT·AI 투자를 하기 전에, 실제 라인을 모델링하고 수천 번 시뮬레이션해 표준 대비 이점과 리스크를 수치로 설명하는 운영 의사결정 도구.">
 <link rel="icon" href="assets/img/mark.svg">
-<link rel="stylesheet" href="assets/css/takt.css?v=202611180720">
+<meta name="description" content="로봇·자동화·IoT 투자를 현재 운영(표준) 대비 수천 번 시뮬레이션해 이점과 문제점을 수치로 설명하는 산업공학 의사결정 도구. 이론 검증 9/9 통과, 설치 없이 브라우저에서 무료로.">
+<link rel="canonical" href="https://chaseunghyeon-ceo.github.io/takt/">
+<meta name="theme-color" content="#F2F4F6">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Takt">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:title" content="Takt — 투자하기 전에, 시뮬레이션하라">
+<meta property="og:description" content="로봇·자동화·IoT 투자를 현재 운영(표준) 대비 수천 번 시뮬레이션해 이점과 문제점을 수치로 설명하는 산업공학 의사결정 도구. 이론 검증 9/9 통과, 설치 없이 브라우저에서 무료로.">
+<meta property="og:url" content="https://chaseunghyeon-ceo.github.io/takt/">
+<meta property="og:image" content="https://chaseunghyeon-ceo.github.io/takt/assets/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Takt — Simulate before you invest. 생산 라인 도식과 가치 브리지 차트">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Takt — 투자하기 전에, 시뮬레이션하라">
+<meta name="twitter:description" content="로봇·자동화·IoT 투자를 현재 운영(표준) 대비 수천 번 시뮬레이션해 이점과 문제점을 수치로 설명하는 산업공학 의사결정 도구. 이론 검증 9/9 통과, 설치 없이 브라우저에서 무료로.">
+<meta name="twitter:image" content="https://chaseunghyeon-ceo.github.io/takt/assets/img/og.png">
+<link rel="stylesheet" href="assets/css/takt.css?v=202611200058">
 <style>
   body { font-size: 16px; background: var(--s1); }
   .label { font-size: 15px; color: var(--accent); font-weight: 700; }
@@ -72,6 +88,24 @@
   .cta h2 { font-size: clamp(30px, 4vw, 48px); letter-spacing: -.03em; margin: 0; line-height: 1.1; }
   footer { border-top: 1px solid var(--line); padding: 22px 0 40px; color: var(--tx3); font-size: 12.5px; }
   footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+  /* Phones: shared links are often opened on mobile — keep the landing readable (the app itself is PC-only). */
+  @media (max-width: 760px) {
+    body { min-width: 0; font-size: 15px; } :root { --page-x: 20px; }
+    .lnav a.l { display: none; } .lnav .wrap { gap: 12px; }
+    .hero { grid-template-columns: 1fr; padding: 48px 0 24px; gap: 20px; } .hero h1 { font-size: 40px; }
+    .facts { grid-template-columns: 1fr 1fr; } .facts div:nth-child(3) { padding-left: 0; border-left: 0; } .facts div:nth-child(n+3) { border-top: 1px solid var(--line); } .facts b { font-size: 22px !important; }
+    .shot { padding: 12px 12px 0; }
+    section.blk { padding-top: 64px; } .blk h2 { font-size: 26px; }
+    .steps .row { grid-template-columns: 40px 1fr; gap: 12px; } .steps .row p { grid-column: 2; }
+    .two, .exp, .assume { grid-template-columns: 1fr; } .two > div { margin: 6px; }
+    .exp > div + div { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); margin-top: 18px; }
+    .assume div { grid-template-columns: 1fr; gap: 2px; }
+    .bridge { overflow-x: auto; } .bridge svg { min-width: 560px; }
+    .cta { margin-top: 72px; } .cta h2 { font-size: 30px; }
+    .mob-only { display: block !important; }
+  }
+  .mob-only { display: none; }
 </style>
 </head>
 <body>
@@ -91,6 +125,7 @@
     <div>
       <p class="lead">실제 기업의 생산 라인을 모델링하고, 로봇·IoT·AI 투자안을 수천 번 반복 실험합니다. 현재 운영을 <b style="color:var(--tx)">표준</b>으로 고정하고, 무엇이 얼마나 좋아지고 무엇이 문제가 되는지 숫자로 설명합니다.</p>
       <div class="actions"><a class="btn primary lg" href="app.html">워크스페이스 열기</a><a class="btn lg" href="#method">작동 방식</a></div>
+      <p class="tx3 mob-only" style="font-size:13px;margin:12px 0 0">워크스페이스는 PC 브라우저에 최적화되어 있습니다.</p>
     </div>
   </header>
 

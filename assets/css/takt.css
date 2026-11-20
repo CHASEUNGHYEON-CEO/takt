@@ -58,7 +58,7 @@ svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-widt
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px;
   border: 0; background: var(--hover); color: var(--tx); border-radius: var(--r-sm);
-  font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background .12s;
+  font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background .12s; text-decoration: none;
 }
 .btn:hover { background: var(--line); }
 .btn:disabled { opacity: .4; cursor: default; }
@@ -249,3 +249,10 @@ body.app-body { min-width: 1100px; }
   .app { display: block; height: auto; } .split { display: block; }
   .view { display: none !important; } .view.on { display: block !important; }
 }
+
+/* share popover & mobile notice */
+.popover { position: fixed; top: calc(var(--top-h) + 8px); right: 16px; width: 440px; max-width: calc(100vw - 32px); background: var(--s1); border-radius: var(--r-lg); box-shadow: 0 12px 40px rgba(0, 0, 0, .14); padding: 20px; z-index: 40; }
+.popover svg.i { width: 14px; height: 14px; vertical-align: -2px; }
+.mobile-note { position: fixed; inset: 0; z-index: 60; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.mobile-note > div { background: var(--s1); border-radius: var(--r-lg); padding: 28px 24px; max-width: 420px; }
+@media (max-width: 760px) { body.app-body { min-width: 0; } }

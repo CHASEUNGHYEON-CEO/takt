@@ -1,5 +1,5 @@
 // Parallel simulation pool: spreads replications over all CPU cores.
-import { buildConfig, aggregate } from './engine.js?v=202611180720';
+import { buildConfig, aggregate } from './engine.js?v=202611200058';
 
 const SIZE = Math.max(2, Math.min(12, (navigator.hardwareConcurrency || 4) - 1));
 let workers = [], queue = [], busy = new Map(), nextId = 1, cancelled = false;
@@ -7,7 +7,7 @@ let workers = [], queue = [], busy = new Map(), nextId = 1, cancelled = false;
 function ensure() {
   if (workers.length) return;
   for (let i = 0; i < SIZE; i++) {
-    const w = new Worker(new URL('./worker.js?v=202611180720', import.meta.url), { type: 'module' });
+    const w = new Worker(new URL('./worker.js?v=202611200058', import.meta.url), { type: 'module' });
     w.onmessage = (e) => { const job = busy.get(w); busy.delete(w); job.resolve(e.data.runs); pump(); };
     w.onerror = (e) => { const job = busy.get(w); busy.delete(w); job && job.reject(e); pump(); };
     workers.push(w);

@@ -5,7 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Takt — Workspace</title>
 <link rel="icon" href="assets/img/mark.svg">
-<link rel="stylesheet" href="assets/css/takt.css?v=202611180720">
+<meta name="description" content="로봇·자동화·IoT 투자를 현재 운영(표준) 대비 수천 번 시뮬레이션해 이점과 문제점을 수치로 설명하는 산업공학 의사결정 도구. 이론 검증 9/9 통과, 설치 없이 브라우저에서 무료로.">
+<link rel="canonical" href="https://chaseunghyeon-ceo.github.io/takt/app.html">
+<meta name="theme-color" content="#F2F4F6">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Takt">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:title" content="Takt 워크스페이스 — 로봇 투자 시뮬레이션">
+<meta property="og:description" content="로봇·자동화·IoT 투자를 현재 운영(표준) 대비 수천 번 시뮬레이션해 이점과 문제점을 수치로 설명하는 산업공학 의사결정 도구. 이론 검증 9/9 통과, 설치 없이 브라우저에서 무료로.">
+<meta property="og:url" content="https://chaseunghyeon-ceo.github.io/takt/app.html">
+<meta property="og:image" content="https://chaseunghyeon-ceo.github.io/takt/assets/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Takt — Simulate before you invest. 생산 라인 도식과 가치 브리지 차트">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Takt 워크스페이스 — 로봇 투자 시뮬레이션">
+<meta name="twitter:description" content="로봇·자동화·IoT 투자를 현재 운영(표준) 대비 수천 번 시뮬레이션해 이점과 문제점을 수치로 설명하는 산업공학 의사결정 도구. 이론 검증 9/9 통과, 설치 없이 브라우저에서 무료로.">
+<meta name="twitter:image" content="https://chaseunghyeon-ceo.github.io/takt/assets/img/og.png">
+<link rel="stylesheet" href="assets/css/takt.css?v=202611200058">
 </head>
 <body class="app-body">
 <div class="app">
@@ -14,7 +31,9 @@
     <div class="crumb" id="crumb"></div>
     <div class="spacer"></div>
     <div class="runstat" id="runstat" hidden><span id="runLabel"></span><div class="progress"><i id="runBar"></i></div><button class="btn sm ghost" id="runCancel">취소</button></div>
+    <button class="btn sm" id="shareBtn" hidden title="현재 분석을 링크로 공유"></button>
     <button class="btn ghost sm" id="themeBtn" title="테마 전환"></button>
+    <div class="popover" id="sharePop" hidden></div>
   </header>
 
   <nav class="nav" id="nav">
@@ -53,6 +72,6 @@
 <input type="file" id="mesIn" accept=".csv,.txt,text/csv" hidden>
 <input type="file" id="formIn" accept=".csv,.txt,.json,text/csv" hidden>
 <div class="toast" id="toast"></div>
-<script type="module" src="assets/js/app.js?v=202611180720"></script>
+<script type="module" src="assets/js/app.js?v=202611200058"></script>
 </body>
 </html>

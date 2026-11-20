@@ -1,9 +1,10 @@
-import * as E from './engine.js?v=202611180720';
-import { evaluate, cancelAll, poolSize } from './pool.js?v=202611180720';
-import { PRESETS, loadCustom, saveCustom, allCases, blankCase } from './cases.js?v=202611180720';
-import * as CH from './charts.js?v=202611180720';
-import * as TPL from './template.js?v=202611180720';
-import * as V from './validate.js?v=202611180720';
+import * as E from './engine.js?v=202611200058';
+import { evaluate, cancelAll, poolSize } from './pool.js?v=202611200058';
+import { PRESETS, loadCustom, saveCustom, allCases, blankCase } from './cases.js?v=202611200058';
+import * as CH from './charts.js?v=202611200058';
+import * as TPL from './template.js?v=202611200058';
+import * as V from './validate.js?v=202611200058';
+import * as SH from './share.js?v=202611200058';
 
 /* ============================== utilities ============================== */
 const $ = (s, el = document) => el.querySelector(s);
@@ -32,6 +33,7 @@ const ICON = {
   shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>', wrench: '<path d="M14.5 6.5a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.5-1.5a4 4 0 0 0-5-5z"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>',
   sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
   gauge: '<path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1.5"/>',
   badge: '<path d="M12 3l2.5 2 3.2-.3.9 3.1 2.7 1.8-1.2 3 1.2 3-2.7 1.8-.9 3.1-3.2-.3L12 21l-2.5-2-3.2.3-.9-3.1-2.7-1.8 1.2-3-1.2-3 2.7-1.8.9-3.1 3.2.3z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
@@ -140,6 +142,7 @@ function renderNav() {
   });
   $('#navFoot').innerHTML = `병렬 워커 ${poolSize}개<br>1초 단위 흐름라인 모델<br>교육·연구용 · 무료`;
   $('#crumb').innerHTML = S.C ? `<span>케이스</span><span class="tx3">/</span><b>${esc(S.C.company)} · ${esc(S.C.title)}</b>` : '<span>케이스 라이브러리</span>';
+  const sb = $('#shareBtn'); sb.hidden = !S.C; if (S.C) sb.innerHTML = ic('share') + '공유';
 }
 $('#nav').addEventListener('click', e => {
   const a = e.target.closest('a[data-view]'); if (!a) return;
@@ -1612,15 +1615,80 @@ $('#pkgIn').onchange = async e => {
   checkPackage(await f.text(), f.name);
 };
 
+/* ============================== SHARE LINKS ============================== */
+const SHARE_VIEWS = { line: '라인 모델', cond: '시뮬레이션 조건', robot: '로봇 영향 분석', decide: '대안·반전 조건', ops: 'OEE·라인 지표', exp: '실험', report: '시나리오·보고서' };
+const AUTO_RUN = { robot: () => hasRobot(S.levers) && runRobot(), decide: () => runDecide(), ops: () => $('#opRun')?.click() };
+async function buildShareLink(run) {
+  const view = SHARE_VIEWS[S.view] ? S.view : 'line';
+  const c = clone(S.C); delete c.actual;
+  const payload = { v: 1, c, l: S.levers, r: S.risk, t: S.target, view, run: !!run && !!AUTO_RUN[view] };
+  return location.origin + location.pathname + '#s=' + await SH.encodeShare(payload);
+}
+async function openShare() {
+  const pop = $('#sharePop');
+  if (!pop.hidden) { pop.hidden = true; return; }
+  const view = SHARE_VIEWS[S.view] ? S.view : 'line', canRun = !!AUTO_RUN[view];
+  pop.innerHTML = `<div class="label" style="color:var(--tx);font-size:16px;font-weight:800">분석 공유 링크</div>
+    <p class="tx2" style="margin:6px 0 14px;font-size:14px">받는 사람이 링크를 열면 <b>${esc(S.C.company)} · ${esc(S.C.title)}</b>의 케이스·설계·가정이 그대로 열리고, <b>${SHARE_VIEWS[view]}</b> 화면으로 이동합니다. 같은 시드라 결과도 똑같이 재현됩니다.</p>
+    ${canRun ? `<label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="shRun" checked> 열자마자 분석을 자동 실행</label>` : ''}
+    <div style="display:flex;gap:8px"><input id="shUrl" readonly style="flex:1" value="링크 만드는 중…"><button class="btn primary" id="shCopy">${ic('copy')}복사</button></div>
+    <p class="tx3" style="font-size:12.5px;margin:12px 0 0;line-height:1.6">${ic('shield')} 데이터는 서버에 저장되지 않고 링크 안에만 담깁니다. 링크를 가진 사람은 내용을 볼 수 있으니, 실제 기업 자료는 회사명·민감 수치를 익명화한 뒤 공유하세요.</p>`;
+  pop.hidden = false;
+  const refresh = async () => { const u = await buildShareLink($('#shRun')?.checked); $('#shUrl').value = u; $('#shUrl').title = `${u.length.toLocaleString()}자`; };
+  await refresh();
+  const r = $('#shRun'); if (r) r.onchange = refresh;
+  $('#shCopy').onclick = async () => {
+    const u = $('#shUrl').value;
+    try { await navigator.clipboard.writeText(u); toast('공유 링크를 복사했습니다'); }
+    catch { $('#shUrl').select(); toast('링크를 선택했습니다. Ctrl+C로 복사하세요'); }
+  };
+}
+$('#shareBtn').onclick = e => { e.stopPropagation(); openShare(); };
+document.addEventListener('click', e => { const p = $('#sharePop'); if (!p.hidden && !p.contains(e.target)) p.hidden = true; });
+
+/** Import a shared analysis from #s=… ; returns the view to open (or null). */
+async function importShare(hash) {
+  let p; try { p = await SH.decodeShare(hash.slice(2)); } catch { toast('공유 링크를 읽을 수 없습니다 (링크가 잘렸을 수 있습니다)'); return null; }
+  if (!p || p.v !== 1 || !p.c?.stations?.length) { toast('지원하지 않는 공유 링크입니다'); return null; }
+  const fp = SH.fingerprint(JSON.stringify(p.c));
+  const id = 'shared-' + fp, list = loadCustom();
+  if (!list.some(x => x.id === id)) {
+    list.push({ ...p.c, id, source: 'custom', tags: [...new Set([...(p.c.tags || []), '공유받음'])] });
+    saveCustom(list);
+  }
+  openCase(id, p.l);
+  if (p.r) S.risk = { ...E.DEFAULT_RISK, ...p.r };
+  if (p.t) S.target = p.t;
+  persist(); resetLive();
+  history.replaceState(null, '', location.pathname + '#' + (SHARE_VIEWS[p.view] ? p.view : 'line'));
+  return { view: SHARE_VIEWS[p.view] ? p.view : 'line', run: p.run };
+}
+
 /* ============================== boot ============================== */
-(function boot() {
+(async function boot() {
   let theme = 'light'; try { theme = localStorage.getItem('takt.theme.v2') || 'light'; } catch {}
   applyTheme(theme);
   let sess = null; try { sess = JSON.parse(localStorage.getItem(SKEY)); } catch {}
   if (sess?.risk) S.risk = { ...E.DEFAULT_RISK, ...sess.risk };
-  if (sess?.caseId) openCase(sess.caseId, sess.levers, sess.draft);
-  const want = location.hash.slice(1);
-  setView(['free', 'valid'].includes(want) ? want : S.C && ['line', 'robot', 'exp', 'report', 'cond', 'ops', 'decide'].includes(want) ? want : 'cases');
+  const shared = location.hash.startsWith('#s=') ? await importShare(location.hash.slice(1)) : null;
+  if (shared) {
+    setView(shared.view);
+    toast(`공유받은 분석을 열었습니다 · 내 케이스에 '공유받음'으로 저장됨`);
+    if (shared.run && AUTO_RUN[shared.view]) setTimeout(() => AUTO_RUN[shared.view](), 300);
+  } else {
+    if (sess?.caseId) openCase(sess.caseId, sess.levers, sess.draft);
+    const want = location.hash.slice(1);
+    setView(['free', 'valid'].includes(want) ? want : S.C && ['line', 'robot', 'exp', 'report', 'cond', 'ops', 'decide'].includes(want) ? want : 'cases');
+  }
+  if (innerWidth < 760 && !sessionStorage.getItem('takt.mobileOk')) {
+    const n = document.createElement('div'); n.className = 'mobile-note';
+    n.innerHTML = `<div><div style="font-size:20px;font-weight:800;margin-bottom:8px">Takt는 PC용 분석 도구예요</div>
+      <p class="tx2" style="margin:0 0 16px">수천 번의 시뮬레이션과 넓은 표·차트를 쓰기 때문에 PC 브라우저에서 열어야 제대로 보입니다. 링크를 복사해 PC로 보내 보세요.</p>
+      <div class="actions"><button class="btn primary" id="mnCopy">${ic('copy')}링크 복사</button><button class="btn" id="mnGo">그래도 보기</button></div></div>`;
+    document.body.appendChild(n);
+    $('#mnCopy').onclick = async () => { try { await navigator.clipboard.writeText(location.href); toast('링크를 복사했습니다'); } catch { toast(location.href); } };
+    $('#mnGo').onclick = () => { try { sessionStorage.setItem('takt.mobileOk', '1'); } catch {} n.remove(); };
+  }
   let rz = 0;
   addEventListener('resize', () => {
     if (S.view === 'line') drawLive(true);

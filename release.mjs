@@ -7,7 +7,7 @@ import { join } from 'node:path';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12); // YYYYMMDDHHMM
-const files = ['app.html', 'index.html', ...['app', 'pool', 'template', 'validate', 'worker', 'cases', 'charts', 'engine'].map(f => `assets/js/${f}.js`)];
+const files = ['app.html', 'index.html', ...['app', 'pool', 'template', 'validate', 'worker', 'cases', 'charts', 'engine', 'share'].map(f => `assets/js/${f}.js`)];
 const pattern = /((?:\.\/|assets\/(?:js|css)\/)[\w-]+\.(?:js|css))(\?v=[\w.-]+)?(?=['"])/g;
 
 let total = 0;
