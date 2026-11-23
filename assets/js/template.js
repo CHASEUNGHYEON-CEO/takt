@@ -1,6 +1,6 @@
 // Takt case form (양식): an Excel-friendly CSV with [sections].
 // Users analyse a real company, fill this form, upload it to the Free Lab, and run it as written.
-import { AUTOMATION, DEFAULT_ECON, DEFAULT_RISK, KINDS } from './engine.js?v=202611200100';
+import { AUTOMATION, DEFAULT_ECON, DEFAULT_RISK, KINDS } from './engine.js?v=202611230651';
 
 /* ---------- CSV primitives ---------- */
 export function parseCSV(text) {

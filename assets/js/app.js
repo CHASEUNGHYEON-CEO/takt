@@ -1,10 +1,10 @@
-import * as E from './engine.js?v=202611200100';
-import { evaluate, cancelAll, poolSize } from './pool.js?v=202611200100';
-import { PRESETS, loadCustom, saveCustom, allCases, blankCase } from './cases.js?v=202611200100';
-import * as CH from './charts.js?v=202611200100';
-import * as TPL from './template.js?v=202611200100';
-import * as V from './validate.js?v=202611200100';
-import * as SH from './share.js?v=202611200100';
+import * as E from './engine.js?v=202611230651';
+import { evaluate, cancelAll, poolSize } from './pool.js?v=202611230651';
+import { PRESETS, loadCustom, saveCustom, allCases, blankCase } from './cases.js?v=202611230651';
+import * as CH from './charts.js?v=202611230651';
+import * as TPL from './template.js?v=202611230651';
+import * as V from './validate.js?v=202611230651';
+import * as SH from './share.js?v=202611230651';
 
 /* ============================== utilities ============================== */
 const $ = (s, el = document) => el.querySelector(s);
@@ -110,21 +110,50 @@ function showRun(label, frac, done, total) {
   $('#runLabel').innerHTML = `<span class="mono">${label} · ${fmt.n(done || 0)}/${fmt.n(total || 0)} sims${isFinite(eta) ? ` · ${eta.toFixed(0)}s 남음` : ''}</span>`;
   $('#runBar').style.width = (frac * 100).toFixed(1) + '%';
 }
-async function run(points, reps, label, seed0, caseDef = S.C) {
+async function run(points, reps, label, seed0, caseDef = S.C, opts = {}) {
   if (S.busy) { toast('다른 실험이 실행 중입니다'); return null; }
   S.busy = true; runT0 = performance.now(); showRun(label, 0, 0, points.length * reps);
-  const base = caseDef.sim?.seed ?? 1000;
+  // Seed mode: 'fixed' reuses the case seed (identical reruns); 'random' draws a new base seed per run.
+  const random = S.seedMode === 'random' && !opts.fixed;
+  const base = random ? 1 + Math.floor(Math.random() * 2e9) : (caseDef.sim?.seed ?? 1000);
+  if (!opts.fixed) S.lastSeed = base;
   try {
     const res = await evaluate(caseDef, points, reps, (d, t) => showRun(label, d / t, d, t), seed0 != null ? base + seed0 : base);
     const secs = (performance.now() - runT0) / 1000;
     toast(`${fmt.n(points.length * reps)}회 시뮬레이션 완료 · ${secs.toFixed(1)}초`);
-    return Object.assign(Object.fromEntries(res), { _meta: { sims: points.length * reps, secs } });
+    return Object.assign(Object.fromEntries(res), { _meta: { sims: points.length * reps, secs, seed: base, random } });
   } catch (e) {
     if (e && e.message !== 'cancelled') { console.error(e); toast('실행 오류: ' + (e.message || e)); }
     return null;
   } finally { S.busy = false; $('#runstat').hidden = true; }
 }
 $('#runCancel').onclick = () => { cancelAll(); toast('실행을 취소했습니다'); };
+
+/* ============================== seed mode ============================== */
+S.seedMode = 'fixed'; S.lastSeed = null;
+function seedTag(meta) {
+  if (!meta || meta.seed == null) return '';
+  return meta.random
+    ? `<button class="tag acc" data-pin-seed="${meta.seed}" title="이 시드를 케이스에 고정하면 같은 결과를 언제든 재현합니다">시드 ${meta.seed} · 무작위 · 고정하기</button>`
+    : `<span class="tag" title="고정 시드 — 다시 실행해도 같은 결과">시드 ${meta.seed} · 고정</span>`;
+}
+function renderSeedSeg() {
+  $$('#seedSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === S.seedMode));
+}
+function setSeedMode(m, quiet) {
+  S.seedMode = m; try { localStorage.setItem('takt.seedMode', m); } catch {}
+  renderSeedSeg();
+  if (!quiet) toast(m === 'random' ? '이제 실행할 때마다 새 난수 시드를 씁니다 (결과에 사용한 시드가 표시됩니다)' : `고정 시드 ${S.C?.sim?.seed ?? 1000}로 돌아왔습니다 — 다시 실행해도 같은 결과`);
+}
+$('#seedSeg').addEventListener('click', e => { const b = e.target.closest('[data-m]'); if (b && b.dataset.m !== S.seedMode) { setSeedMode(b.dataset.m); if (S.view === 'line') resetLive(); } });
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-pin-seed]'); if (!b || !S.C) return;
+  const seed = +b.dataset.pinSeed;
+  S.C.sim = { ...(S.C.sim || {}), seed }; persist();
+  setSeedMode('fixed', true);
+  toast(`시드 ${seed}를 케이스에 고정했습니다 — 다시 실행하면 이 결과가 그대로 재현됩니다`);
+  b.outerHTML = `<span class="tag" title="케이스에 고정된 시드">시드 ${seed} · 고정됨</span>`;
+});
 
 /* ============================== shell ============================== */
 const NAV = [
@@ -348,7 +377,8 @@ let liveRaf = 0, liveFrame = 0;
 function resetLive() {
   if (!S.C) return;
   const lv = S.liveWhich === 'base' ? baseLevers(S.C) : S.levers;
-  S.live = E.createSim(cfgOf(lv), 7, { trace: true });
+  S.liveSeed = S.seedMode === 'random' ? 1 + Math.floor(Math.random() * 2e9) : 7;
+  S.live = E.createSim(cfgOf(lv), S.liveSeed, { trace: true });
   stopLive(); if (S.view === 'line') drawLive(true);
 }
 function stopLive() { S.playing = false; cancelAnimationFrame(liveRaf); const b = $('#playBtn'); if (b) b.innerHTML = ic('play') + '시작'; }
@@ -526,7 +556,7 @@ function drawLive(full) {
 
   // live kpis
   const T = L.cfg.shiftSec, hrs = L.t / 3600, exp = L.cfg.demand * L.t / T, pace = exp > 0 ? L.good / exp : NaN;
-  $('#clock').textContent = `T+${String(Math.floor(L.t / 3600)).padStart(2, '0')}:${String(Math.floor(L.t % 3600 / 60)).padStart(2, '0')} / ${L.cfg.shiftSec / 3600}h · ${S.liveWhich === 'base' ? '표준' : '현재 설계'}`;
+  $('#clock').textContent = `T+${String(Math.floor(L.t / 3600)).padStart(2, '0')}:${String(Math.floor(L.t % 3600 / 60)).padStart(2, '0')} / ${L.cfg.shiftSec / 3600}h · ${S.liveWhich === 'base' ? '표준' : '현재 설계'} · 시드 ${S.liveSeed}`;
   $('#liveKpis').innerHTML = [
     ['양품', fmt.n(L.good), '개', `목표 ${L.cfg.demand}`],
     ['목표 대비 페이스', isFinite(pace) ? fmt.n(pace * 100, 0) : '—', '%', '', isFinite(pace) ? (pace >= 1 ? 'pos' : 'neg') : ''],
@@ -719,7 +749,7 @@ function robotResults() {
   if (robots.some(r => r.s.auto === 'industrial')) prob.push(['shield', '<b>산업용 로봇 안전펜스</b> — 펜스·인터록 설치 면적이 필요하고 라인 레이아웃 변경이 수반됩니다']);
 
   return `
-    <div class="callout"><div class="label" style="margin-bottom:4px;display:flex;gap:8px;align-items:center">결론 · 시뮬레이션 ${fmt.n(M.res._meta.sims)}회 ${validBadge()}</div><h2>${verdict}</h2>
+    <div class="callout"><div class="label" style="margin-bottom:4px;display:flex;gap:8px;align-items:center">결론 · 시뮬레이션 ${fmt.n(M.res._meta.sims)}회 ${seedTag(M.res._meta)} ${validBadge()}</div><h2>${verdict}</h2>
       <p>${moved ? `병목은 ${esc(names[M.bnB])}에서 ${esc(names[M.bnN])}(으)로 이동합니다. ` : ''}이론상 로봇 대비 실제 로봇은 정지로 연간 ${fmt.won(Math.abs(M.bridge.stop))}원을 잃습니다. 램프업을 반영한 1년차 손실은 ${fmt.won(M.rampLoss)}원입니다.</p></div>
     <div class="kpis" style="margin-top:var(--gap)">
       ${[['연간 순효과', fmt.sgn(M.g0, fmt.won), '원', '표준 대비', M.g0 > 0 ? 'pos' : 'neg'],
@@ -806,7 +836,7 @@ function compareBlock(C, res, pts, id, extraCol) {
   const csv = () => download(`takt-${id}-${C.id}.csv`, '﻿' + ['scenario,capex,good_mean,good_ci95,good_p5,good_p95,service_level,lead_time,wip,escaped,headcount,profit_per_shift,annual_gain,payback_months',
     ...rows.map(x => [x.name, x.r.capex, x.r.good.mean, x.r.good.ci95, x.r.good.p5, x.r.good.p95, x.r.serviceLevel, x.r.lt.mean, x.r.wip.mean, x.r.escaped.mean, x.r.headcount, x.r.pnl.profit, x.gain, x.pb].map(v => typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : (+v).toFixed(3)).join(','))].join('\n'), 'text/csv');
   setTimeout(() => { const b2 = $('#' + id + 'Csv'); if (b2) b2.onclick = csv; });
-  return `<div class="panel"><div class="panel-h"><h3>시나리오 비교 · 표준 고정</h3><div class="actions"><span class="sub">시뮬레이션 ${fmt.n(res._meta.sims)}회 · ${res._meta.secs.toFixed(1)}초</span><button class="btn sm" id="${id}Csv">${ic('download')}CSV</button></div></div>
+  return `<div class="panel"><div class="panel-h"><h3>시나리오 비교 · 표준 고정</h3><div class="actions"><span class="sub">시뮬레이션 ${fmt.n(res._meta.sims)}회 · ${res._meta.secs.toFixed(1)}초</span>${seedTag(res._meta)}<button class="btn sm" id="${id}Csv">${ic('download')}CSV</button></div></div>
     <div class="tbl-wrap"><table class="t"><thead><tr><th>시나리오</th><th>투자비</th><th>양품 평균 ±CI</th><th>P5–P95</th><th>목표 달성</th><th>리드타임</th><th>불량 유출</th><th>교대당 이익</th><th>연간 효과</th><th>회수</th>${extraCol ? '<th></th>' : ''}</tr></thead>
     <tbody>${rows.map(x => `<tr class="${x.key === 'base' ? 'base' : ''} ${best && x.key === best.key ? 'best' : ''}">
       <td class="txt"><i class="dot" style="background:${x.color}"></i> ${esc(x.name)} ${best && x.key === best.key ? '<span class="tag acc">권고</span>' : ''}${x.r.capex > C.budget ? ' <span class="tag neg">예산 초과</span>' : ''}</td>
@@ -869,7 +899,7 @@ function sweepResults() {
   const f = cfg.kpi === 'gain' ? v => fmt.won(v) : v => fmt.n(v, 1);
   const pts = xs.map((x, j) => [x, val(j, 'm')]);
   const bestJ = pts.reduce((bi, p, j) => (cfg.kpi === 'lt' || cfg.kpi === 'wip' ? p[1] < pts[bi][1] : p[1] > pts[bi][1]) ? j : bi, 0);
-  return `<div class="panel"><div class="panel-h"><h3>${esc(SWEEP_KPI.find(k => k[0] === cfg.kpi)[1])} vs ${esc(lab)}</h3><span class="sub">${fmt.n(res._meta.sims)} sims · 음영 = 95% CI</span></div><div class="panel-b">
+  return `<div class="panel"><div class="panel-h"><h3>${esc(SWEEP_KPI.find(k => k[0] === cfg.kpi)[1])} vs ${esc(lab)}</h3><span class="sub">시뮬레이션 ${fmt.n(res._meta.sims)}회 · 음영 = 95% CI ${seedTag(res._meta)}</span></div><div class="panel-b">
     <p class="chart-sub">최적점은 ${esc(lab)} = <b>${xs[bestJ]}</b> (${f(pts[bestJ][1])}). ${cfg.kpi === 'gain' && pts[pts.length - 1][1] < pts[bestJ][1] ? '이 지점을 넘으면 추가 투자의 한계효용이 음수가 됩니다.' : ''}</p>
     ${CH.lineChart({ W: chartW(1, false), H: 300, series: [{ label: '', color: 'var(--accent)', dots: true, pts, band: xs.map((x, j) => [x, val(j, 'lo'), val(j, 'hi')]) }], xfmt: v => fmt.n(v, cfg.step < 1 ? 1 : 0), yfmt: f, endLabels: false })}
     </div><div class="tbl-wrap"><table class="t"><thead><tr><th>${esc(lab)}</th><th>양품 /교대</th><th>목표 달성</th><th>리드타임</th><th>재공</th><th>투자비</th><th>연간 효과</th></tr></thead><tbody>
@@ -1232,7 +1262,7 @@ function renderValid() {
   $$('[data-go]', $('#v-valid')).forEach(b => b.onclick = () => setView(b.dataset.go));
   $('#vRun').onclick = async () => {
     const base = S.C || PRESETS[0];
-    const results = await V.runSuite((pts, reps, label, seed0, cd) => run(pts, reps, '검증 ' + label, seed0, cd), base, part => {
+    const results = await V.runSuite((pts, reps, label, seed0, cd) => run(pts, reps, '검증 ' + label, seed0, cd, { fixed: true }), base, part => {
       saveValid({ date: new Date().toISOString().slice(0, 16).replace('T', ' '), caseName: base.company + ' ' + base.title, results: part }); renderValid();
     });
     if (!results) toast('검증이 중단되었습니다');
@@ -1516,7 +1546,7 @@ function renderDecide() {
       <div class="actions"><label class="tx2" style="display:flex;gap:8px;align-items:center;font-size:14px">목표 회수기간 <input type="number" id="dcT" value="${S.target}" min="1" style="width:80px"> 개월</label>
         <button class="btn primary" id="dcRun">${ic('play')}대안 비교 + 반전 조건 실행</button></div></div>
     ${!D ? `<div class="empty">${ic('swap')}<div style="margin-top:10px">실행하면 병목 공정(${esc(C.stations[genAlternatives(C).bottleneck].name)})을 기준으로 대안 ${genAlternatives(C).alts.length - 1}개를 자동으로 만들고, 표준과 같은 난수로 비교합니다.</div></div>` : `
-    <div class="callout"><div class="label" style="display:flex;gap:8px;align-items:center">권고 · 시뮬레이션 ${fmt.n(D.sims + (D.flipSims || 0))}회 ${validBadge()}</div>
+    <div class="callout"><div class="label" style="display:flex;gap:8px;align-items:center">권고 · 시뮬레이션 ${fmt.n(D.sims + (D.flipSims || 0))}회 ${seedTag(D.res._meta)} ${validBadge()}</div>
       <h2>${sc.rec.key === 'base' ? '현행 유지가 가장 낫습니다 — 검토한 대안 중 목표 회수기간을 만족하는 것이 없습니다' : `'${esc(sc.rec.name)}' — 3년 순효과 ${fmt.sgn(sc.rec.net3, fmt.won)}원, 회수 ${fmt.mo(sc.rec.pb)}`}</h2>
       <p>${esc(sc.rec.why)}. 투자비 ${fmt.won(sc.rec.r.capex)}원, 연간 효과 ${fmt.sgn(sc.rec.gain, fmt.won)}원. 기준: 회수기간 ${S.target}개월 이내·예산 ${fmt.won(C.budget)}원 이내 대안 중 3년 순효과(3×연간 효과 − 투자비) 최대.</p></div>
     <div class="grid75">
@@ -1564,12 +1594,13 @@ async function exportPackage() {
   const caseDef = { ...clone(C), risk: { ...S.risk } };
   const res = await run([{ key: 'base', levers: baseLevers(caseDef), risk: S.risk }, { key: 'design', levers: lv, risk: S.risk }], reps, '재현 패키지', undefined, caseDef);
   if (!res) return;
+  caseDef.sim = { ...(caseDef.sim || {}), seed: res._meta.seed };
   const v = loadValid();
   const pkg = {
     format: 'takt-reproducibility-package', formatVersion: 1, engine: E.ENGINE_VERSION, created: new Date().toISOString(),
     app: location.origin + location.pathname, source: 'https://github.com/CHASEUNGHYEON-CEO/takt',
     howToReproduce: 'Takt › 시나리오·보고서 › 재현 검사에 이 파일을 올리면 같은 입력·시드·반복 수로 다시 실행해 기대 결과와 비교합니다.',
-    run: { reps, seed: caseDef.sim?.seed ?? 1000, replicationSeeds: 'seed + r × 7919 (r = 0…reps−1)', designDescription: describe(lv, caseDef) },
+    run: { reps, seed: res._meta.seed, seedMode: res._meta.random ? 'random (recorded)' : 'fixed', replicationSeeds: 'seed + r × 7919 (r = 0…reps−1)', designDescription: describe(lv, caseDef) },
     case: caseDef, levers: lv,
     expected: { base: pickRes(res.base), design: pickRes(res.design) },
     tolerance: { sameEngineVersion: '완전 일치 (상대오차 1e-9)', otherEngineVersion: '양품 ±max(2×95%CI, 1%), 그 외 ±2%' },
@@ -1582,7 +1613,7 @@ async function checkPackage(text, name) {
   let pkg; try { pkg = JSON.parse(text); } catch { toast('JSON 파일이 아닙니다'); return; }
   if (pkg.format !== 'takt-reproducibility-package') { toast('Takt 재현 패키지가 아닙니다'); return; }
   const C = pkg.case, risk = C.risk || {};
-  const res = await run([{ key: 'base', levers: baseLevers(C), risk }, { key: 'design', levers: pkg.levers, risk }], pkg.run.reps, '재현 검사', undefined, C);
+  const res = await run([{ key: 'base', levers: baseLevers(C), risk }, { key: 'design', levers: pkg.levers, risk }], pkg.run.reps, '재현 검사', undefined, C, { fixed: true });
   if (!res) return;
   const same = pkg.engine === E.ENGINE_VERSION, rows = [];
   [['base', '표준'], ['design', '설계']].forEach(([k, lbl]) => {
@@ -1621,6 +1652,7 @@ const AUTO_RUN = { robot: () => hasRobot(S.levers) && runRobot(), decide: () => 
 async function buildShareLink(run) {
   const view = SHARE_VIEWS[S.view] ? S.view : 'line';
   const c = clone(S.C); delete c.actual;
+  if (S.seedMode === 'random' && S.lastSeed) c.sim = { ...(c.sim || {}), seed: S.lastSeed };
   const payload = { v: 1, c, l: S.levers, r: S.risk, t: S.target, view, run: !!run && !!AUTO_RUN[view] };
   return location.origin + location.pathname + '#s=' + await SH.encodeShare(payload);
 }
@@ -1629,7 +1661,7 @@ async function openShare() {
   if (!pop.hidden) { pop.hidden = true; return; }
   const view = SHARE_VIEWS[S.view] ? S.view : 'line', canRun = !!AUTO_RUN[view];
   pop.innerHTML = `<div class="label" style="color:var(--tx);font-size:16px;font-weight:800">분석 공유 링크</div>
-    <p class="tx2" style="margin:6px 0 14px;font-size:14px">받는 사람이 링크를 열면 <b>${esc(S.C.company)} · ${esc(S.C.title)}</b>의 케이스·설계·가정이 그대로 열리고, <b>${SHARE_VIEWS[view]}</b> 화면으로 이동합니다. 같은 시드라 결과도 똑같이 재현됩니다.</p>
+    <p class="tx2" style="margin:6px 0 14px;font-size:14px">받는 사람이 링크를 열면 <b>${esc(S.C.company)} · ${esc(S.C.title)}</b>의 케이스·설계·가정이 그대로 열리고, <b>${SHARE_VIEWS[view]}</b> 화면으로 이동합니다. 시드 <b>${S.seedMode === 'random' && S.lastSeed ? S.lastSeed : (S.C.sim?.seed ?? 1000)}</b>로 고정되어 결과도 똑같이 재현됩니다.</p>
     ${canRun ? `<label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="shRun" checked> 열자마자 분석을 자동 실행</label>` : ''}
     <div style="display:flex;gap:8px"><input id="shUrl" readonly style="flex:1" value="링크 만드는 중…"><button class="btn primary" id="shCopy">${ic('copy')}복사</button></div>
     <p class="tx3" style="font-size:12.5px;margin:12px 0 0;line-height:1.6">${ic('shield')} 데이터는 서버에 저장되지 않고 링크 안에만 담깁니다. 링크를 가진 사람은 내용을 볼 수 있으니, 실제 기업 자료는 회사명·민감 수치를 익명화한 뒤 공유하세요.</p>`;
@@ -1659,6 +1691,7 @@ async function importShare(hash) {
   openCase(id, p.l);
   if (p.r) S.risk = { ...E.DEFAULT_RISK, ...p.r };
   if (p.t) S.target = p.t;
+  setSeedMode('fixed', true); // reproduce exactly what the sender saw
   persist(); resetLive();
   history.replaceState(null, '', location.pathname + '#' + (SHARE_VIEWS[p.view] ? p.view : 'line'));
   return { view: SHARE_VIEWS[p.view] ? p.view : 'line', run: p.run };
@@ -1670,6 +1703,8 @@ async function importShare(hash) {
   applyTheme(theme);
   let sess = null; try { sess = JSON.parse(localStorage.getItem(SKEY)); } catch {}
   if (sess?.risk) S.risk = { ...E.DEFAULT_RISK, ...sess.risk };
+  try { S.seedMode = localStorage.getItem('takt.seedMode') === 'random' ? 'random' : 'fixed'; } catch {}
+  renderSeedSeg();
   const shared = location.hash.startsWith('#s=') ? await importShare(location.hash.slice(1)) : null;
   if (shared) {
     setView(shared.view);
