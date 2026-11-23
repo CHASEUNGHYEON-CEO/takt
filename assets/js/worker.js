@@ -1,4 +1,4 @@
-import { buildConfig, createSim, summarize, shiftProfit } from './engine.js?v=202611230651';
+import { buildConfig, createSim, summarize, shiftProfit } from './engine.js?v=202611231110';
 
 self.onmessage = (e) => {
   const { id, caseDef, levers, risk, reps, seed0 } = e.data;

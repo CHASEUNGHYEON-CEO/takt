@@ -233,7 +233,7 @@ table.t td.l { text-align: left; }
 
 /* PC-only product: no mobile layout. Narrow windows keep the desktop structure:
    <1280 → nav becomes a 72px icon rail, inspector moves under the workspace.
-   <1100 → page stops shrinking (horizontal scroll) so tables/charts keep PC proportions. */
+   <1000 → page stops shrinking (horizontal scroll) so tables/charts keep PC proportions. */
 @media (max-width: 1279px) {
   :root { --nav-w: 72px; --page-x: 24px; }
   .nav { padding: 16px 12px; }
@@ -242,7 +242,7 @@ table.t td.l { text-align: left; }
   .brand { width: auto; min-width: 32px; }
   .split { grid-template-columns: 1fr; } .inspector { position: static; max-height: none; border-left: 0; border-top: 1px solid var(--line); }
 }
-body.app-body { min-width: 1100px; }
+body.app-body { min-width: 1000px; } /* fits 1024px landscape tablets */
 @media print {
   body { background: #fff; }
   .nav, .topbar, .inspector, .no-print { display: none !important; }
@@ -256,3 +256,5 @@ body.app-body { min-width: 1100px; }
 .mobile-note { position: fixed; inset: 0; z-index: 60; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; }
 .mobile-note > div { background: var(--s1); border-radius: var(--r-lg); padding: 28px 24px; max-width: 420px; }
 @media (max-width: 760px) { body.app-body { min-width: 0; } }
+.rotate-hint { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 55; display: flex; gap: 12px; align-items: center; background: #191F28; color: #fff; padding: 12px 16px; border-radius: var(--r-md); font-size: 14px; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.rotate-hint button { border: 0; background: rgba(255,255,255,.15); color: #fff; border-radius: 6px; height: 28px; padding: 0 10px; font: inherit; font-size: 13px; cursor: pointer; }

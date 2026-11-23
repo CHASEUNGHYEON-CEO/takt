@@ -1,10 +1,10 @@
-import * as E from './engine.js?v=202611230651';
-import { evaluate, cancelAll, poolSize } from './pool.js?v=202611230651';
-import { PRESETS, loadCustom, saveCustom, allCases, blankCase } from './cases.js?v=202611230651';
-import * as CH from './charts.js?v=202611230651';
-import * as TPL from './template.js?v=202611230651';
-import * as V from './validate.js?v=202611230651';
-import * as SH from './share.js?v=202611230651';
+import * as E from './engine.js?v=202611231110';
+import { evaluate, cancelAll, poolSize } from './pool.js?v=202611231110';
+import { PRESETS, loadCustom, saveCustom, allCases, blankCase } from './cases.js?v=202611231110';
+import * as CH from './charts.js?v=202611231110';
+import * as TPL from './template.js?v=202611231110';
+import * as V from './validate.js?v=202611231110';
+import * as SH from './share.js?v=202611231110';
 
 /* ============================== utilities ============================== */
 const $ = (s, el = document) => el.querySelector(s);
@@ -1740,3 +1740,18 @@ addEventListener('hashchange', async () => {
   toast(`공유받은 분석을 열었습니다 · 내 케이스에 '공유받음'으로 저장됨`);
   if (sh.run && AUTO_RUN[sh.view]) setTimeout(() => AUTO_RUN[sh.view](), 300);
 });
+
+// Tablets held in portrait (760–999px, touch): the app keeps its PC layout, so suggest landscape.
+(function rotateHint() {
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  const show = () => {
+    const narrow = innerWidth >= 760 && innerWidth < 1000, el = $('.rotate-hint');
+    if (coarse && narrow && !el && !sessionStorage.getItem('takt.rotateOk')) {
+      const n = document.createElement('div'); n.className = 'rotate-hint';
+      n.innerHTML = `<span>태블릿은 가로로 돌리면 화면 전체가 보여요</span><button>닫기</button>`;
+      n.querySelector('button').onclick = () => { try { sessionStorage.setItem('takt.rotateOk', '1'); } catch {} n.remove(); };
+      document.body.appendChild(n);
+    } else if (el && !narrow) el.remove();
+  };
+  show(); addEventListener('resize', show);
+})();
